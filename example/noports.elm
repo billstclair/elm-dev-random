@@ -2,7 +2,6 @@
 --
 -- noports.elm
 -- Pure Elm Diceware example for DevRandom module.
--- Dictionary mapping integer to Diceware string
 -- Copyright (c) 2017 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
