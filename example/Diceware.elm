@@ -182,8 +182,11 @@ br =
 
 view : Model -> Html Msg
 view model =
-    div []
+    div [ style [ ( "width", "40em" ) ]
+        ]
         [ h2 [] [ text "Diceware Passphrase Generator" ]
+        , p []
+            [ text "This page generates passphrases using JavaScript running in your web browser, using the browser's cryptographically secure random number generator. See below for instructions." ]
         , p []
             [ text "Words: "
             , input [ size 3
@@ -211,6 +214,15 @@ view model =
                  (dieInputs model)
                  [ button [ onClick LookupDice ] [ text "Lookup" ]
                  ]
+        , p []
+            [ text "To generate a passphrase, will in \"Words\" with the number of words to generate and click the \"Generate\" button. To clear the word string, click \"Clear\". If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five numbers to the left of the \"Lookup\" button with the numbers from five dice, then click that button. It will add one word to the end of the list."
+            ]
+        , p []
+            [ text "For more information about Diceware, see "
+            , a [ href "http://diceware.com/" ]
+                [ text "Diceware.com" ]
+            , text "."
+            ]
         , p []
             [ text "Source code: "
             , a [ href "https://github.com/billstclair/elm-dev-random" ]
