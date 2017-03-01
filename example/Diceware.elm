@@ -9,7 +9,7 @@
 --
 ----------------------------------------------------------------------
 
-module Diceware exposing ( Model, Msg (..)
+module Diceware exposing ( Model, Msg ( ReceiveBytes )
                          , init, update, view )
 
 import DevRandom exposing ( Config, SendPort )
@@ -220,13 +220,19 @@ view model =
                  , button [ onClick LookupDice ] [ text "Lookup" ]
                  ]
         , p []
-            [ text "To generate a passphrase, will in \"Words\" with the number of words to generate and click the \"Generate\" button. To clear the word string, click \"Clear\". If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five numbers to the left of the \"Lookup\" button with the numbers from five dice, then click that button. It will add one word to the end of the list."
+            [ text "To generate a passphrase, fill in \"Words\" with the number of words to generate, and click the \"Generate\" button. To clear the word string, click \"Clear\"."
+            ]
+        , p []
+            [ text "If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five boxes to the left of the \"Lookup\" button with the numbers (1-6) from five six-sided dice rolls, then click that button. It will add one word to the end of the list."
             ]
         , p []
             [ text "For more information about Diceware, see "
             , a [ href "http://diceware.com/" ]
                 [ text "Diceware.com" ]
             , text "."
+            ]
+        , p []
+            [ text "A five-word Diceware passphrase has 6^5^5 possibilities, over 64 bits. A ten-word Diceware passphrase has 6^5^10 possibilities, over 129 bits."
             ]
         , p []
             [ text "Source code: "
