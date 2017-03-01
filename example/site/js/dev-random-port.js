@@ -23,24 +23,12 @@ function err(msg) {
   throw new Error(msg);
 }
 
-function init(app, cmdPortName, subPortName) {
+function init(cmdPort, subPort) {
   crypto = window.crypto;
   if (crypto) {
     if (!crypto.getRandomValues) {
       crypto = null;
     }
-  }
-  var ports = app.ports;
-  if (!ports) {
-    err('app has no ports.');
-  }
-  var cmdPort = ports[cmdPortName];
-  var subPort = ports[subPortName];
-  if (!cmdPort) {
-    err('Missing command port: ' + cmdPortName);
-  }
-  if (!subPort) {
-    err('Missing subscription port: ' + subPortName);
   }
   cmdPort.subscribe(function(bytes) {
     var res = [];

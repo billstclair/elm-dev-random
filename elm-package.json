@@ -1,12 +1,14 @@
 {
-    "version": "1.0.0",
+    "version": "1.0.2",
     "summary": "Cryptographically secure random-number generator.",
     "repository": "https://github.com/billstclair/elm-dev-random.git",
     "license": "MIT",
     "source-directories": [
-        "src"      
+        "src"
     ],
-    "exposed-modules": [ "DevRandom" ],
+    "exposed-modules": [
+        "DevRandom"
+    ],
     "dependencies": {
         "elm-lang/core": "5.1.1 <= v < 6.0.0"
     },

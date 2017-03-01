@@ -46,7 +46,7 @@ var app = Elm.Main.fullscreen(null);
 
 // Connect to the ports
 // devRandomPort is defined in js/dev-random-port.js
-devRandomPort.init(app, "getDevRandom", "receiveRandomBytes");
+devRandomPort.init(app.ports.getDevRandom, app.ports.receiveRandomBytes);
 
 </script>
 
