@@ -26,7 +26,7 @@ main =
         }
 
 init : () -> ( Model, Cmd Msg )
-init nichts =
+init _ =
     Diceware.init <| Just getDevRandom
 
 subscriptions : Model -> Sub Msg

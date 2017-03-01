@@ -1,7 +1,7 @@
 ---------------------------------------------------------------------
 --
--- DicewareStrings.elm
--- Dictionary mapping integer to Diceware string
+-- Diceware.elm
+-- Shared user interface for Diceware example of using DevRandom module.
 -- Copyright (c) 2017 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
@@ -176,6 +176,10 @@ dieInputs model =
                     )
                     [0, 1, 2, 3, 4]
 
+br : Html Msg
+br =
+    Html.br [] []
+
 view : Model -> Html Msg
 view model =
     div []
@@ -207,4 +211,10 @@ view model =
                  (dieInputs model)
                  [ button [ onClick LookupDice ] [ text "Lookup" ]
                  ]
+        , p []
+            [ text "Source code: "
+            , a [ href "https://github.com/billstclair/elm-dev-random" ]
+                [ text "github.com/billstclair/elm-dev-random" ]
+            , br
+            , text "Copyright 2017 Bill St. Clair" ]
         ]
