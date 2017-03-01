@@ -53,7 +53,7 @@ init sendPort =
           , diceStrings = Array.fromList [ "1", "1", "1", "1", "1" ]
           , dice = Array.fromList [ 1, 1, 1, 1, 1 ]
           }
-        , Cmd.none
+        , DevRandom.generate (5 * 2) config
         )
 
 type Msg = UpdateCount String
@@ -199,7 +199,9 @@ view model =
             , text " "
             , button [ onClick Clear ] [ text "Clear" ]
             ]
-        , p [ style [ ( "margin-left", "1em" ) ]
+        , p [ style [ ( "margin-left", "1em" )
+                    , ( "font-size", "150%" )
+                    ]
             ]
             ( let strings = case model.strings of
                                 [] -> [nbsp]
