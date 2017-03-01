@@ -15,11 +15,24 @@ module Diceware exposing ( Msg (..)
 import DevRandom exposing ( Config, SendPort )
 import DicewareStrings
 
+import Html exposing ( Html, Attribute
+                     , div, p, h2, h3, text
+                     , input, button, a, img
+                     )
+import Html.Attributes exposing ( value, size, href, src, title, alt, style )
+import Html.Events exposing ( onClick, onInput )
+import Array exposing ( Array )
+import Char
+import List.Extra as LE
+import Debug exposing (log)
+
 type alias Model =
     { config : Config Msg
     , countString : String
     , count : Int
     , strings : List String
+    , diceStrings : Array String
+    , dice : Array Int
     }
 
 init : Maybe (SendPort Msg) -> ( Model, Cmd Msg )
@@ -37,13 +50,18 @@ init sendPort =
           , countString = "5"
           , count = 5
           , strings = []
+          , diceStrings = Array.fromList [ "1", "1", "1", "1", "1" ]
+          , dice = Array.fromList [ 1, 1, 1, 1, 1 ]
           }
         , Cmd.none
         )
 
 type Msg = UpdateCount String
-         | Compute    
+         | UpdateDie Int String
+         | Generate
+         | Clear
          | ReceiveBytes (List Int)
+         | LookupDice
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -52,18 +70,50 @@ update msg model =
             ( { model
                   | countString = countString
                   , count = case String.toInt countString of
-                                Ok count -> count
+                                Ok count -> max 0 (min count 20)
                                 Err _ -> 0
               }
-            , Cmd.none )
-        Compute ->
+            , Cmd.none
+            )
+
+        UpdateDie idx string ->
+            let value = case String.toInt string of
+                            Ok v ->
+                                if v < 1 || v > 6 then
+                                    0
+                                else
+                                    v
+                            Err _ ->
+                                0
+            in
+                ( { model
+                        | diceStrings = Array.set idx string model.diceStrings
+                        , dice = Array.set idx value model.dice
+                  }
+                , Cmd.none
+                )
+            
+        Generate ->
             case 2 * model.count of
                 0 ->
-                    ( model, Cmd.none )
+                    ( { model | strings = [] }
+                      , Cmd.none
+                    )
                 bytes ->
                     ( model, DevRandom.generate bytes model.config )
+
+        Clear ->
+            ( { model | strings = [] }
+            , Cmd.none
+            )
+
         ReceiveBytes bytes ->
             ( { model | strings = receiveBytes bytes [] }
+            , Cmd.none
+            )
+            
+        LookupDice ->
+            ( lookupDice model
             , Cmd.none
             )
 
@@ -80,6 +130,81 @@ receiveBytes bytes res =
         _ ->
             res
 
-view : Model -> Model
+lookupDice : Model -> Model
+lookupDice model =
+    case LE.find (\x -> x == 0) (Array.toList model.dice) of
+        Just _ ->
+            model
+        Nothing ->
+            let count = model.count
+                strings = model.strings
+                stringsTail = List.drop
+                                ((List.length strings) - count + 1) strings
+                idx = List.foldl
+                        (\x y -> (6 * y) + x - 1)
+                        0
+                        <| Array.toList model.dice
+                string = case Array.get idx DicewareStrings.array of
+                             Nothing -> "a"
+                             Just x -> x
+            in
+                { model
+                    | strings = List.append stringsTail [string]
+                }
+
+nbsp : String
+nbsp =
+    String.fromList [ Char.fromCode 160 ]
+
+dieString : Int -> Model -> String
+dieString idx model =
+    case Array.get idx model.diceStrings of
+        Nothing -> "1"
+        Just s -> s
+
+dieInputs : Model -> List (Html Msg)
+dieInputs model =
+    List.intersperse
+        (text " ")
+        <| List.map (\x ->
+                         input
+                           [ size 1
+                           , onInput <| UpdateDie x
+                           , value <| dieString x model
+                           ]
+                           []
+                    )
+                    [0, 1, 2, 3, 4]
+
+view : Model -> Html Msg
 view model =
-    model
+    div []
+        [ h2 [] [ text "Diceware Passphrase Generator" ]
+        , p []
+            [ text "Words: "
+            , input [ size 3
+                    , onInput UpdateCount
+                    , value model.countString
+                    ]
+                  []
+            , text " "
+            , button [ onClick Generate ] [ text "Generate" ]
+            , text " "
+            , button [ onClick Clear ] [ text "Clear" ]
+            ]
+        , p [ style [ ( "margin-left", "1em" ) ]
+            ]
+            ( let strings = case model.strings of
+                                [] -> [nbsp]
+                                ss -> ss
+              in
+                  List.map (\s -> text (s ++ " ")) strings
+            )
+        , h3 []
+            [ text "Roll Your Own Dice" ]
+        , p []
+            <| List.append
+                 (dieInputs model)
+                 [ button [ onClick LookupDice ] [ text "Lookup" ]
+                 ]
+        ]
