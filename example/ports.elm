@@ -15,7 +15,7 @@ import Diceware exposing (Model, Msg(..))
 import Html exposing (Html)
 
 port getDevRandom : Int -> Cmd msg
-port receiveRandomBytes : (List Int -> msg) -> Sub msg
+port receiveRandomBytes : ((Bool, List Int) -> msg) -> Sub msg
 
 main =
     Html.programWithFlags

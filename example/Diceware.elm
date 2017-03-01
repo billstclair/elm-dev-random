@@ -31,6 +31,7 @@ type alias Model =
     , countString : String
     , count : Int
     , strings : List String
+    , isSecure : Bool
     , diceStrings : Array String
     , dice : Array Int
     }
@@ -50,6 +51,7 @@ init sendPort =
           , countString = "5"
           , count = 5
           , strings = []
+          , isSecure = True
           , diceStrings = Array.fromList [ "", "", "", "", "" ]
           , dice = Array.fromList [ 0, 0, 0, 0, 0 ]
           }
@@ -60,7 +62,7 @@ type Msg = UpdateCount String
          | UpdateDie Int String
          | Generate
          | Clear
-         | ReceiveBytes (List Int)
+         | ReceiveBytes (Bool, List Int)
          | LookupDice
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -103,12 +105,18 @@ update msg model =
                     ( model, DevRandom.generate bytes model.config )
 
         Clear ->
-            ( { model | strings = [] }
+            ( { model
+                  | strings = []
+                  , isSecure = True
+              }
             , Cmd.none
             )
 
-        ReceiveBytes bytes ->
-            ( { model | strings = receiveBytes bytes [] }
+        ReceiveBytes (isSecure, bytes) ->
+            ( { model
+                  | strings = receiveBytes bytes []
+                  , isSecure = isSecure
+              }
             , Cmd.none
             )
             
@@ -150,6 +158,7 @@ lookupDice model =
             in
                 { model
                     | strings = List.append stringsTail [string]
+                    , isSecure = True
                 }
 
 nbsp : String
@@ -182,7 +191,9 @@ br =
 
 view : Model -> Html Msg
 view model =
-    div [ style [ ( "width", "40em" ) ]
+    div [ style [ ( "width", "40em" )
+                , ( "margin-left", "2em" )
+                ]
         ]
         [ h2 [] [ text "Diceware Passphrase Generator" ]
         , p []
@@ -201,6 +212,12 @@ view model =
             ]
         , p [ style [ ( "margin-left", "1em" )
                     , ( "font-size", "150%" )
+                    , ( "color"
+                      , if model.isSecure then
+                            "black"
+                        else
+                            "red"
+                      )
                     ]
             ]
             ( let strings = case model.strings of
@@ -221,6 +238,15 @@ view model =
                  ]
         , p []
             [ text "To generate a passphrase, fill in \"Words\" with the number of words to generate, and click the \"Generate\" button. To clear the word string, click \"Clear\"."
+            ]
+        , p []
+            [ text "If the passphrase is black, then cryptographically-secure random number generation was used. If it is red, then the random number generation was NOT cryptographically secure, because "
+            , text
+                <| case model.config.sendPort of
+                       Nothing ->
+                           "you are running the pure Elm version of the code."
+                       _ ->
+                           "your browser does not support it."
             ]
         , p []
             [ text "If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five boxes to the left of the \"Lookup\" button with the numbers (1-6) from five six-sided dice rolls, then click that button. It will add one word to the end of the list."

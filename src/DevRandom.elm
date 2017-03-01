@@ -30,15 +30,28 @@ See the [example readme](https://github.com/billstclair/elm-dev-random/tree/mast
 
 import Random
 
-{-| Signature of send port for dev-random-port.js -}
+{-| Signature of send port for dev-random-port.js
+
+The `Int` arg is the number of bytes (8-bit integers) to generate.
+-}
 type alias SendPort msg =
     Int -> Cmd msg
 
-{-| Message wrapper for receive port of dev-random-port.js -}
-type alias ReceiveMsgWrapper msg =
-    List Int -> msg
+{-| Message wrapper for receive port of dev-random-port.js
 
-{-| Parameter to `generate` that determines whether to use the Elm `Random` module or ports to the JavaScript code that calls `window.crypto.getRandomValues()`. -}
+    (isSecure, bytes) -> msg
+
+If isSecure is True, then the random number generation was cryptographically secure.
+-}
+type alias ReceiveMsgWrapper msg =
+    (Bool, List Int) -> msg
+
+{-| Parameter to `generate` that determines whether to use the Elm `Random` module or ports to the JavaScript code that calls `window.crypto.getRandomValues()`.
+
+If `sendPort` is not `Nothing`, will use the ports.
+
+If `sendPort` is `Nothing`, and `receiveMsgWrapper` is not `Nothing`, will use the Elm `Random` module.
+-}
 type alias Config msg =
     { sendPort : Maybe (SendPort msg)
     , receiveMsgWrapper : Maybe (ReceiveMsgWrapper msg)
@@ -59,7 +72,7 @@ generate bytes config =
             case config.receiveMsgWrapper of
                 Nothing -> Cmd.none
                 Just wrapper ->
-                    Random.generate wrapper <| generator bytes
+                    Random.generate (\x -> wrapper (False, x)) <| generator bytes
 
 generator : Int -> Random.Generator (List Int)
 generator bytes =

@@ -25,8 +25,10 @@ function err(msg) {
 
 function init(app, cmdPortName, subPortName) {
   crypto = window.crypto;
-  if (!crypto.getRandomvalues) {
-    crypto = null;
+  if (crypto) {
+    if (!crypto.getRandomValues) {
+      crypto = null;
+    }
   }
   var ports = app.ports;
   if (!ports) {
@@ -42,10 +44,12 @@ function init(app, cmdPortName, subPortName) {
   }
   cmdPort.subscribe(function(bytes) {
     var res = [];
+    var secure = false;
     if (crypto) {
-      crypto.getRandomValues(buf);
+      secure = true;
       var buf = new Uint8Array(bytes);
-      for (var i in bytes) {
+      crypto.getRandomValues(buf);
+      for (var i in buf) {
         res.push(buf[i]);
       }
     } else {
@@ -53,7 +57,7 @@ function init(app, cmdPortName, subPortName) {
         res.push(Math.trunc(256 * Math.random()));
       }
     }
-    subPort.send(res);
+    subPort.send([secure, res]);
   });
 }
 
