@@ -36,9 +36,9 @@ The JavaScript code communicates with your program via two ports, as defined in 
 
 You can name these anything you want, but the signatures must match. If you use different names, you must change the `site/index.html` code to use your names.
 
-Your `index.html` file must include the `site/js/dev-random-port.js` file, e.g via a line in its `&lt;head>` section:
+Your `index.html` file must include the `site/js/dev-random-port.js` file, e.g via a line in its `<head>` section:
 
-    &lt;script type='text/javascript' src='js/dev-random-port.js'>&lt;/script>
+    <script type='text/javascript' src='js/dev-random-port.js'></script>
 
 Your `index.html` file must call `devRandomPort.init()` to attach the code that calls `window.crypto.getRandomBytes()` to your ports:
 
