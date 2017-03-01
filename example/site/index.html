@@ -31,7 +31,7 @@
 // The latter takes a List of integers, the random bytes.
 //
 // port getDevRandom : Int -> Cmd msg
-// port receiveRandomBytes : (List Int -> msg) -> Sub msg
+// port receiveRandomBytes : ((Bool, List Int) -> msg) -> Sub msg
 //
 // If you need to name your main module something other than Main
 // or to name your ports something other than getDevRandom & receiveRandomBytes,
