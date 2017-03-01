@@ -1,4 +1,4 @@
-The [billstclair/elm-digital-ocean](http://package.elm-lang.org/packages/billstclair/elm-dev-random/latest) package provides a cryptographically secure random number generation via JavaScript's `window.crypto.getRandomValues()` function.
+The [billstclair/elm-dev-random](http://package.elm-lang.org/packages/billstclair/elm-dev-random/latest) package provides cryptographically secure random number generation via JavaScript's `window.crypto.getRandomValues()` function.
 
 The DevRandom module contains a non-port API, using the standard Elm `Random` module. If you follow the directions in the README for the [`example` directory](https://github.com/billstclair/elm-dev-random/tree/master/example), you can use the `getRandomValue()` mechanism instead.
 

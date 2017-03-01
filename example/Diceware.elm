@@ -50,8 +50,8 @@ init sendPort =
           , countString = "5"
           , count = 5
           , strings = []
-          , diceStrings = Array.fromList [ "1", "1", "1", "1", "1" ]
-          , dice = Array.fromList [ 1, 1, 1, 1, 1 ]
+          , diceStrings = Array.fromList [ "", "", "", "", "" ]
+          , dice = Array.fromList [ 0, 0, 0, 0, 0 ]
           }
         , DevRandom.generate (5 * 2) config
         )
@@ -207,14 +207,17 @@ view model =
                                 [] -> [nbsp]
                                 ss -> ss
               in
-                  List.map (\s -> text (s ++ " ")) strings
+                  List.intersperse
+                    (text " ")
+                    <| List.map text strings
             )
         , h3 []
             [ text "Roll Your Own Dice" ]
         , p []
             <| List.append
                  (dieInputs model)
-                 [ button [ onClick LookupDice ] [ text "Lookup" ]
+                 [ text " "
+                 , button [ onClick LookupDice ] [ text "Lookup" ]
                  ]
         , p []
             [ text "To generate a passphrase, will in \"Words\" with the number of words to generate and click the \"Generate\" button. To clear the word string, click \"Clear\". If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five numbers to the left of the \"Lookup\" button with the numbers from five dice, then click that button. It will add one word to the end of the list."
