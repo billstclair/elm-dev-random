@@ -17,16 +17,16 @@ var devRandomPort = {};
 // External entry points
 devRandomPort.init = init;
 
-var getRandomValues = null;
+var crypto = null;
 
 function err(msg) {
   throw new Error(msg);
 }
 
 function init(app, cmdPortName, subPortName) {
-  var crypto = window.crypto;
-  if (crypto) {
-    getRandomValues = crypto.getRandomValues;
+  crypto = window.crypto;
+  if (!crypto.getRandomvalues) {
+    crypto = null;
   }
   var ports = app.ports;
   if (!ports) {
@@ -41,15 +41,19 @@ function init(app, cmdPortName, subPortName) {
     err('Missing subscription port: ' + subPortName);
   }
   cmdPort.subscribe(function(bytes) {
-    var buf = new Uint8Array(bytes);
-    if (getRandomValues) {
-      getRandomValues(buf);
+    var res = [];
+    if (crypto) {
+      crypto.getRandomValues(buf);
+      var buf = new Uint8Array(bytes);
+      for (var i in bytes) {
+        res.push(buf[i]);
+      }
     } else {
       for (var i=0; i<bytes; i++) {
-        buf[i] = Math.trunc(256 * Math.random());
+        res.push(Math.trunc(256 * Math.random()));
       }
     }
-    subPort.send(buf);
+    subPort.send(res);
   });
 }
 

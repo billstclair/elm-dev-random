@@ -9,7 +9,7 @@
 --
 ----------------------------------------------------------------------
 
-module Diceware exposing ( Msg (..)
+module Diceware exposing ( Model, Msg (..)
                          , init, update, view )
 
 import DevRandom exposing ( Config, SendPort )
