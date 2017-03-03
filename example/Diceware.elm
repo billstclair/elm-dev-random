@@ -255,6 +255,10 @@ view model =
             [ text "For more information about Diceware, see "
             , a [ href "http://diceware.com/" ]
                 [ text "Diceware.com" ]
+            , text ". "
+            , text "The classic XKCD cartoon about Diceware is at "
+            , a [ href "https://xkcd.com/936/" ]
+                [ text "xkcd.com/936" ]
             , text "."
             ]
         , p []
