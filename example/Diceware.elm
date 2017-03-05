@@ -9,10 +9,10 @@
 --
 ----------------------------------------------------------------------
 
-module Diceware exposing ( Model, Msg ( ReceiveBytes )
+module Diceware exposing ( Model, Msg ( ReceiveInt )
                          , init, update, view )
 
-import DevRandom exposing ( Config, SendPort )
+import DevRandom exposing ( IntConfig, SendPort )
 import DicewareStrings
 
 import Html exposing ( Html, Attribute
@@ -27,7 +27,7 @@ import List.Extra as LE
 import Debug exposing (log)
 
 type alias Model =
-    { config : Config Msg
+    { config : IntConfig Msg
     , countString : String
     , count : Int
     , strings : List String
@@ -40,11 +40,11 @@ init : Maybe (SendPort Msg) -> ( Model, Cmd Msg )
 init sendPort =
     let config = case sendPort of
                      Nothing -> { sendPort = Nothing
-                                , receiveMsgWrapper = Just ReceiveBytes
+                                , receiveIntMsgWrapper = Just ReceiveInt
                                 }
                      _ ->
                          { sendPort = sendPort
-                         , receiveMsgWrapper = Nothing
+                         , receiveIntMsgWrapper = Nothing
                          }
     in
         ( { config = config
@@ -55,14 +55,14 @@ init sendPort =
           , diceStrings = Array.fromList [ "", "", "", "", "" ]
           , dice = Array.fromList [ 0, 0, 0, 0, 0 ]
           }
-        , DevRandom.generate (5 * 2) config
+        , DevRandom.generateInt DicewareStrings.count config
         )
 
 type Msg = UpdateCount String
          | UpdateDie Int String
          | Generate
          | Clear
-         | ReceiveBytes (Bool, List Int)
+         | ReceiveInt (Bool, Int)
          | LookupDice
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -96,13 +96,14 @@ update msg model =
                 )
             
         Generate ->
-            case 2 * model.count of
+            case model.count of
                 0 ->
                     ( { model | strings = [] }
                       , Cmd.none
                     )
-                bytes ->
-                    ( model, DevRandom.generate bytes model.config )
+                _ ->
+                    ( { model | strings = [] }
+                    , DevRandom.generateInt DicewareStrings.count model.config )
 
         Clear ->
             ( { model
@@ -112,31 +113,26 @@ update msg model =
             , Cmd.none
             )
 
-        ReceiveBytes (isSecure, bytes) ->
+        ReceiveInt (isSecure, idx) ->
+            let string = case (Array.get idx DicewareStrings.array) of
+                             Nothing -> "a"
+                             Just s -> s
+                strings = string :: model.strings
+            in
             ( { model
-                  | strings = receiveBytes bytes []
+                  | strings = strings
                   , isSecure = isSecure
               }
-            , Cmd.none
+            , if (List.length strings) >= model.count then
+                  Cmd.none
+              else
+                  DevRandom.generateInt DicewareStrings.count model.config
             )
             
         LookupDice ->
             ( lookupDice model
             , Cmd.none
             )
-
-receiveBytes : List Int -> List String -> List String
-receiveBytes bytes res =
-    case bytes of
-        b0 :: rest ->
-             case rest of
-                 b1 :: rest2 ->
-                      (DicewareStrings.bytesToString b0 b1) :: res
-                          |> receiveBytes rest2
-                 _ ->
-                     res
-        _ ->
-            res
 
 lookupDice : Model -> Model
 lookupDice model =

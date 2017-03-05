@@ -9,9 +9,9 @@
 --
 ----------------------------------------------------------------------
 
-module DevRandom exposing ( generate
-                          , Config
-                          , SendPort, ReceiveMsgWrapper
+module DevRandom exposing ( generate, generateInt
+                          , Config, IntConfig
+                          , SendPort, ReceiveMsgWrapper, ReceiveIntMsgWrapper
                           )
 
 {-|
@@ -21,11 +21,13 @@ There are two ways to call the generator, depending on the `Config` parameter to
 
 See the [example readme](https://github.com/billstclair/elm-dev-random/tree/master/example) for instructions on creating the ports and using the included JavaScript code.
 
-# Types
+# Generate random bytes
 @docs SendPort, ReceiveMsgWrapper, Config
-
-# Functions
 @docs generate
+
+# Generate random integers
+@docs ReceiveIntMsgWrapper, IntConfig
+@docs generateInt
 -}
 
 import Random
@@ -72,8 +74,51 @@ generate bytes config =
             case config.receiveMsgWrapper of
                 Nothing -> Cmd.none
                 Just wrapper ->
-                    Random.generate (\x -> wrapper (False, x)) <| generator bytes
+                    generator bytes
+                        |> Random.generate (\x -> wrapper (False, x))
 
 generator : Int -> Random.Generator (List Int)
 generator bytes =
     Random.list bytes <| Random.int 0 255
+
+{-| Message wrapper for receiveInt port of dev-random-port.js
+
+    (isSecure, integer) -> msg
+
+If isSecure is True, then the random number generation was cryptographically secure.
+-}
+type alias ReceiveIntMsgWrapper msg =
+    (Bool, Int) -> msg
+
+{-| Parameter to `generateInt` that determines whether to use the Elm `Random` module or ports to the JavaScript code that calls `window.crypto.getRandomValues()`.
+
+If `sendPort` is not `Nothing`, will use the ports.
+
+If `sendPort` is `Nothing`, and `receiveIntMsgWrapper` is not `Nothing`, will use the Elm `Random` module.
+-}
+type alias IntConfig msg =
+    { sendPort : Maybe (SendPort msg)
+    , receiveIntMsgWrapper : Maybe (ReceiveIntMsgWrapper msg)
+    }
+
+{-| Generate a random x uniformly distributed in the range 0 <= x < ceiling.
+
+    generateInt ceiling config
+    
+If `config.sendPort` is not `Nothing`, return a `Cmd` that sends `bytes` through the port. Otherwise, if `config.receiveIntMsgWrapper` is not `Nothing`, use it to wrap the result of `Random.generate()` as a message for your `update` function.
+-}
+generateInt : Int -> IntConfig msg -> Cmd msg
+generateInt ceiling config =
+    case config.sendPort of
+        Just thePort ->
+            thePort ceiling
+        Nothing ->
+            case config.receiveIntMsgWrapper of
+                Nothing -> Cmd.none
+                Just wrapper ->
+                    intGenerator ceiling
+                        |> Random.generate (\x -> wrapper (False, x))
+
+intGenerator : Int -> Random.Generator Int
+intGenerator ceiling =
+    Random.int 0 (ceiling-1)

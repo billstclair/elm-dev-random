@@ -9,7 +9,7 @@
 --
 ----------------------------------------------------------------------
 
-module DicewareStrings exposing ( array, count, bytesToString )
+module DicewareStrings exposing ( array, count )
 
 import Array exposing (Array)
 
@@ -22,15 +22,6 @@ array =
 count : Int
 count =
     Array.length array
-
-bytesToString : Int -> Int -> String
-bytesToString b0 b1 =
-    let num = (b0 * 256) + b1
-        idx = num * count // 2^16
-    in
-        case Array.get idx array of
-            Nothing -> "a"
-            Just res -> res
 
 dicewareStrings : List String
 dicewareStrings =

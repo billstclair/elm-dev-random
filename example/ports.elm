@@ -14,8 +14,8 @@ port module Main exposing (..)
 import Diceware exposing (Model, Msg(..))
 import Html exposing (Html)
 
-port getDevRandom : Int -> Cmd msg
-port receiveRandomBytes : ((Bool, List Int) -> msg) -> Sub msg
+port getDevRandomInt : Int -> Cmd msg
+port receiveRandomInt : ((Bool, Int) -> msg) -> Sub msg
 
 main =
     Html.programWithFlags
@@ -27,8 +27,8 @@ main =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    Diceware.init <| Just getDevRandom
+    Diceware.init <| Just getDevRandomInt
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    receiveRandomBytes ReceiveBytes
+    receiveRandomInt ReceiveInt
