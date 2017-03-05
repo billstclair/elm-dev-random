@@ -56,7 +56,7 @@ function init(cmdPort, subPort) {
   var crypto = getCrypto();
   var secure = crypto ? true : false;
   cmdPort.subscribe(function(bytes) {
-    subPort.send([secure, getBytes(bytes)]);
+    subPort.send([secure, getBytes(bytes, crypto)]);
   });
 }
 
@@ -83,7 +83,7 @@ function initInt(cmdPort, subPort) {
     var maxInt = (ceiling * (256^bytes % ceiling)) - 1;
     var num;
     while (true) {
-      var buf = getBytes(bytes);
+      var buf = getBytes(bytes, crypto);
       num = 0;
       for (var i in buf) {
         num = num*256 + buf[i];
