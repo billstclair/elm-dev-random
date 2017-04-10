@@ -14,17 +14,27 @@ module Diceware exposing ( Model, Msg ( ReceiveInt )
 
 import DevRandom exposing ( IntConfig, SendPort )
 import DicewareStrings
+import NewDicewareStrings
+import ShortDicewareStrings
 
 import Html exposing ( Html, Attribute
-                     , div, p, h2, h3, text
+                     , div, span, p, h2, h3, text
                      , input, button, a, img
+                     , select, option
+                     , ul, li
                      )
-import Html.Attributes exposing ( value, size, href, src, title, alt, style )
+import Html.Attributes exposing ( value, size, href, src, title
+                                , alt, style, selected )
 import Html.Events exposing ( onClick, onInput )
 import Array exposing ( Array )
 import Char
 import List.Extra as LE
 import Debug exposing (log)
+
+type DicewareTable
+    = OldTable
+    | NewTable
+    | ShortTable
 
 type alias Model =
     { config : IntConfig Msg
@@ -32,31 +42,86 @@ type alias Model =
     , count : Int
     , strings : List String
     , isSecure : Bool
+    , whichTable : DicewareTable
     , diceStrings : Array String
     , dice : Array Int
     }
 
+makeConfig : Maybe (SendPort Msg) -> IntConfig Msg
+makeConfig sendPort =
+    case sendPort of
+        Nothing -> { sendPort = Nothing
+                   , receiveIntMsgWrapper = Just ReceiveInt
+                   }
+        _ ->
+            { sendPort = sendPort
+            , receiveIntMsgWrapper = Nothing
+            }
+
+makeInitialModel : Int -> Maybe (SendPort Msg) -> Model
+makeInitialModel count sendPort =
+    let config = makeConfig sendPort
+        model = { config = config
+                , countString = toString count
+                , count = count
+                , strings = []
+                , isSecure = True
+                , whichTable = ShortTable
+                , diceStrings = Array.empty
+                , dice = Array.empty
+                }
+    in
+        initializeDice model
+
+initializeDice : Model -> Model
+initializeDice model =
+    let dice = getDice model
+    in
+        { model
+            | diceStrings = Array.fromList <| List.repeat dice ""
+            , dice = Array.fromList <| List.repeat dice 0
+        }
+    
 init : Maybe (SendPort Msg) -> ( Model, Cmd Msg )
 init sendPort =
-    let config = case sendPort of
-                     Nothing -> { sendPort = Nothing
-                                , receiveIntMsgWrapper = Just ReceiveInt
-                                }
-                     _ ->
-                         { sendPort = sendPort
-                         , receiveIntMsgWrapper = Nothing
-                         }
+    let count = 6
+        model = makeInitialModel count sendPort
     in
-        ( { config = config
-          , countString = "5"
-          , count = 5
-          , strings = []
-          , isSecure = True
-          , diceStrings = Array.fromList [ "", "", "", "", "" ]
-          , dice = Array.fromList [ 0, 0, 0, 0, 0 ]
-          }
-        , DevRandom.generateInt DicewareStrings.count config
+        ( model
+        , DevRandom.generateInt (getCount model) model.config
         )
+
+getDice : Model -> Int
+getDice model =
+    case model.whichTable of
+        NewTable -> 5
+        OldTable -> 5
+        ShortTable -> 4
+
+getCount : Model -> Int
+getCount model =
+    case model.whichTable of
+        NewTable -> NewDicewareStrings.count
+        OldTable -> DicewareStrings.count
+        ShortTable -> ShortDicewareStrings.count
+
+getArray : Model -> Array String
+getArray model =
+    case model.whichTable of
+        NewTable -> NewDicewareStrings.array
+        OldTable -> DicewareStrings.array
+        ShortTable -> ShortDicewareStrings.array
+
+getEntropyPerDie : Model -> Float
+getEntropyPerDie model =
+    case model.whichTable of
+        NewTable -> 12.9
+        OldTable -> 12.9
+        ShortTable -> 10.3
+
+getEntropy : Model -> Float
+getEntropy model =
+    (toFloat <| List.length model.strings) * (getEntropyPerDie model)
 
 type Msg = UpdateCount String
          | UpdateDie Int String
@@ -64,6 +129,7 @@ type Msg = UpdateCount String
          | Clear
          | ReceiveInt (Bool, Int)
          | LookupDice
+         | ChangeTable String
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
@@ -103,7 +169,7 @@ update msg model =
                     )
                 _ ->
                     ( { model | strings = [] }
-                    , DevRandom.generateInt DicewareStrings.count model.config )
+                    , DevRandom.generateInt (getCount model) model.config )
 
         Clear ->
             ( { model
@@ -114,7 +180,7 @@ update msg model =
             )
 
         ReceiveInt (isSecure, idx) ->
-            let string = case (Array.get idx DicewareStrings.array) of
+            let string = case (Array.get idx <| getArray model) of
                              Nothing -> "a"
                              Just s -> s
                 strings = string :: model.strings
@@ -126,13 +192,42 @@ update msg model =
             , if (List.length strings) >= model.count then
                   Cmd.none
               else
-                  DevRandom.generateInt DicewareStrings.count model.config
+                  DevRandom.generateInt (getCount model) model.config
             )
             
         LookupDice ->
             ( lookupDice model
             , Cmd.none
             )
+
+        ChangeTable table ->
+            let oldTable = model.whichTable
+                newTable = stringToTable table
+                count = newRollCount newTable model
+            in
+                ( initializeDice
+                      { model
+                          | whichTable = stringToTable table
+                          , count = count
+                          , countString = toString count
+                          , strings = []
+                      }
+                , DevRandom.generateInt count model.config
+                )
+
+newRollCount : DicewareTable -> Model -> Int
+newRollCount newTable model =
+    let oldEntropy = getEntropy model
+        newPerBit = getEntropyPerDie <| { model | whichTable = newTable }
+    in
+        round <| (oldEntropy / newPerBit)
+
+stringToTable : String -> DicewareTable
+stringToTable table =
+    case table of
+        "old" -> OldTable
+        "new" -> NewTable
+        _ -> ShortTable
 
 lookupDice : Model -> Model
 lookupDice model =
@@ -148,7 +243,7 @@ lookupDice model =
                         (\x y -> (6 * y) + x - 1)
                         0
                         <| Array.toList model.dice
-                string = case Array.get idx DicewareStrings.array of
+                string = case Array.get idx <| getArray model of
                              Nothing -> "a"
                              Just x -> x
             in
@@ -164,7 +259,7 @@ nbsp =
 dieString : Int -> Model -> String
 dieString idx model =
     case Array.get idx model.diceStrings of
-        Nothing -> "1"
+        Nothing -> ""
         Just s -> s
 
 dieInputs : Model -> List (Html Msg)
@@ -179,7 +274,11 @@ dieInputs model =
                            ]
                            []
                     )
-                    [0, 1, 2, 3, 4]
+            ( if (getDice model) == 5 then
+                  [0, 1, 2, 3, 4]
+              else
+                  [0, 1, 2, 3]
+            )
 
 br : Html Msg
 br =
@@ -195,7 +294,21 @@ view model =
         , p []
             [ text "This page generates passphrases using JavaScript running in your web browser, using the browser's cryptographically secure random number generator. See below for instructions." ]
         , p []
-            [ text "Words: "
+            [ select [ onInput ChangeTable ]
+                  [ option [ value "short"
+                           , selected <| model.whichTable == ShortTable
+                           ]
+                        [ text "EFF Short List" ]
+                  , option [ value "new"
+                           , selected <| model.whichTable == NewTable
+                           ]
+                        [ text "EFF Long List" ]
+                  ,option [ value "old"
+                          , selected <| model.whichTable == OldTable
+                          ]
+                        [ text "Traditional List" ]
+                  ]
+            , text " Words: "
             , input [ size 3
                     , onInput UpdateCount
                     , value model.countString
@@ -205,6 +318,9 @@ view model =
             , button [ onClick Generate ] [ text "Generate" ]
             , text " "
             , button [ onClick Clear ] [ text "Clear" ]
+            , text
+                  <| " Entropy: "
+                  ++ (toString <| round <| getEntropy model) ++ " bits"
             ]
         , p [ style [ ( "margin-left", "1em" )
                     , ( "font-size", "150%" )
@@ -233,7 +349,7 @@ view model =
                  , button [ onClick LookupDice ] [ text "Lookup" ]
                  ]
         , p []
-            [ text "To generate a passphrase, fill in \"Words\" with the number of words to generate, and click the \"Generate\" button. To clear the word string, click \"Clear\"."
+            [ text "To generate a passphrase, choose which of the three lists to use from the selector (initially \"EFF Short List\"), fill in \"Words\" with the number of words to generate, and click the \"Generate\" button. To clear the word string, click \"Clear\"."
             ]
         , p []
             [ text "If the passphrase is black, then cryptographically-secure random number generation was used. If it is red, then the random number generation was NOT cryptographically secure, because "
@@ -245,7 +361,31 @@ view model =
                            "your browser does not support it."
             ]
         , p []
-            [ text "If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five boxes to the left of the \"Lookup\" button with the numbers (1-6) from five six-sided dice rolls, then click that button. It will add one word to the end of the list."
+            [ text "If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five boxes to the left of the \"Lookup\" button with the numbers (1-6) from four or five six-sided dice rolls, then click that button. It will add one word to the end of the list."
+            ]
+        , p []
+            [ text "The three lists are as follows:"
+            , ul []
+                [ li []
+                      [ text "EFF Short List"
+                      , br
+                      , text "The first short list from the "
+                      , effListLink
+                      , text "."
+                      ]
+                ,li []
+                      [ text "EFF Long List"
+                      , br
+                      , text "The long list from the "
+                      , effListLink
+                      , text "."
+                      ]
+                ,li []
+                      [ text "Traditional List"
+                      , br
+                      , text "The original Diceware word list."
+                      ]
+                ]
             ]
         , p []
             [ text "For more information about Diceware, see "
@@ -258,7 +398,7 @@ view model =
             , text "."
             ]
         , p []
-            [ text "A five-word Diceware passphrase has 6^5^5 possibilities, over 64 bits. A ten-word Diceware passphrase has 6^5^10 possibilities, over 129 bits."
+            [ text "A five-word Diceware passphrase (from one of the long lists) has 6^5^5 possibilities, over 64 bits. A ten-word Diceware passphrase (again, from one of the long lists) has 6^5^10 possibilities, over 129 bits."
             ]
         , p []
             [ text "Source code: "
@@ -266,4 +406,15 @@ view model =
                 [ text "github.com/billstclair/elm-dev-random" ]
             , br
             , text "Copyright 2017 Bill St. Clair" ]
+        ]
+
+effListLink : Html msg
+effListLink =
+    span []
+        [ text "EFF's July 2016 \""
+        , a [ href
+              "https://www.eff.org/deeplinks/2016/07/new-wordlists-random-passphrases"
+            ]
+              [ text "New Wordlists for Random Passphrases" ]
+        , text "\""
         ]
