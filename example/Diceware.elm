@@ -102,16 +102,16 @@ getArray model =
         OldTable -> DicewareStrings.array
         ShortTable -> ShortDicewareStrings.array
 
-getEntropyPerDie : Model -> Float
-getEntropyPerDie model =
-    case model.whichTable of
+entropyPerDie : DicewareTable -> Float
+entropyPerDie table =
+    case table of
         NewTable -> 12.9
         OldTable -> 12.9
         ShortTable -> 10.3
 
 getEntropy : Model -> Float
 getEntropy model =
-    (toFloat <| List.length model.strings) * (getEntropyPerDie model)
+    (toFloat <| List.length model.strings) * (entropyPerDie model.whichTable)
 
 type Msg = UpdateCount String
          | UpdateDice String
@@ -207,10 +207,12 @@ update msg model =
 
 newRollCount : DicewareTable -> Model -> Int
 newRollCount newTable model =
-    let oldEntropy = getEntropy model
-        newPerBit = getEntropyPerDie <| { model | whichTable = newTable }
+    let count = toFloat model.count
+        perDie = entropyPerDie model.whichTable
+        oldEntropy = count * perDie
+        newPerDie = entropyPerDie newTable
     in
-        round <| (oldEntropy / newPerBit)
+        round <| (oldEntropy / newPerDie)
 
 stringToTable : String -> DicewareTable
 stringToTable table =
