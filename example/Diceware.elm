@@ -361,7 +361,7 @@ view model =
                            "your browser does not support it."
             ]
         , p []
-            [ text "If you prefer rolling your own dice to using your computer's random number generator, you can fill in the five boxes to the left of the \"Lookup\" button with the numbers (1-6) from four or five six-sided dice rolls, then click that button. It will add one word to the end of the list."
+            [ text "If you prefer rolling your own dice to using your computer's random number generator, you can fill in the four or five boxes to the left of the \"Lookup\" button with the numbers (1-6) from four or five six-sided dice rolls, then click that button. It will add one word to the end of the list."
             ]
         , p []
             [ text "The three lists are as follows:"
