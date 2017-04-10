@@ -1,5 +1,5 @@
 {
-    "version": "1.1.4",
+    "version": "1.1.5",
     "summary": "Cryptographically secure random-number generator.",
     "repository": "https://github.com/billstclair/elm-dev-random.git",
     "license": "MIT",
