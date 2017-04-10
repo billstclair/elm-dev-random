@@ -42,7 +42,7 @@ You can name these anything you want, but the signatures must match. If you use 
 
 Your `index.html` file must include the `site/js/dev-random-port.js` file, e.g via a line in its `<head>` section:
 
-    <script type='text/javascript' src='js/dev-random-port.js'></script>
+    <script type='text/javascript' src='js/dev-random-port.js'></ script>
 
 Your `index.html` file must call `devRandomPort.init()` to attach the code that calls `window.crypto.getRandomBytes()` to your ports:
 

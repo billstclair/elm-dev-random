@@ -23,12 +23,13 @@ import Html exposing ( Html, Attribute
                      , select, option
                      , ul, li
                      )
-import Html.Attributes exposing ( value, size, href, src, title
+import Html.Attributes exposing ( value, size, maxlength, href, src, title
                                 , alt, style, selected )
-import Html.Events exposing ( onClick, onInput )
+import Html.Events exposing ( onClick, onInput, on, keyCode )
 import Array exposing ( Array )
 import Char
 import List.Extra as LE
+import Json.Decode as Json
 import Debug exposing (log)
 
 type DicewareTable
@@ -43,8 +44,7 @@ type alias Model =
     , strings : List String
     , isSecure : Bool
     , whichTable : DicewareTable
-    , diceStrings : Array String
-    , dice : Array Int
+    , diceString : String
     }
 
 makeConfig : Maybe (SendPort Msg) -> IntConfig Msg
@@ -67,21 +67,11 @@ makeInitialModel count sendPort =
                 , strings = []
                 , isSecure = True
                 , whichTable = ShortTable
-                , diceStrings = Array.empty
-                , dice = Array.empty
+                , diceString = ""
                 }
     in
-        initializeDice model
+        model
 
-initializeDice : Model -> Model
-initializeDice model =
-    let dice = getDice model
-    in
-        { model
-            | diceStrings = Array.fromList <| List.repeat dice ""
-            , dice = Array.fromList <| List.repeat dice 0
-        }
-    
 init : Maybe (SendPort Msg) -> ( Model, Cmd Msg )
 init sendPort =
     let count = 6
@@ -91,8 +81,8 @@ init sendPort =
         , DevRandom.generateInt (getCount model) model.config
         )
 
-getDice : Model -> Int
-getDice model =
+getDiceCount : Model -> Int
+getDiceCount model =
     case model.whichTable of
         NewTable -> 5
         OldTable -> 5
@@ -124,7 +114,8 @@ getEntropy model =
     (toFloat <| List.length model.strings) * (getEntropyPerDie model)
 
 type Msg = UpdateCount String
-         | UpdateDie Int String
+         | UpdateDice String
+         | DiceKeydown Int
          | Generate
          | Clear
          | ReceiveInt (Bool, Int)
@@ -144,22 +135,20 @@ update msg model =
             , Cmd.none
             )
 
-        UpdateDie idx string ->
-            let value = case String.toInt string of
-                            Ok v ->
-                                if v < 1 || v > 6 then
-                                    0
-                                else
-                                    v
-                            Err _ ->
-                                0
-            in
-                ( { model
-                        | diceStrings = Array.set idx string model.diceStrings
-                        , dice = Array.set idx value model.dice
-                  }
-                , Cmd.none
-                )
+        UpdateDice string ->
+            ( { model
+                  | diceString = string
+              }
+            , Cmd.none
+            )
+
+        DiceKeydown keycode ->
+            ( if keycode == 13 then
+                  lookupDice model
+              else
+                  model
+            , Cmd.none
+            )
             
         Generate ->
             case model.count of
@@ -205,13 +194,14 @@ update msg model =
                 newTable = stringToTable table
                 count = newRollCount newTable model
             in
-                ( initializeDice
-                      { model
-                          | whichTable = stringToTable table
-                          , count = count
-                          , countString = toString count
-                          , strings = []
-                      }
+                (
+                 { model
+                     | whichTable = stringToTable table
+                     , count = count
+                     , countString = toString count
+                     , strings = []
+                     , diceString = ""
+                 }
                 , DevRandom.generateInt count model.config
                 )
 
@@ -229,60 +219,67 @@ stringToTable table =
         "new" -> NewTable
         _ -> ShortTable
 
+dieNum : String -> Int
+dieNum string =
+    case String.toInt string of
+        Err _ ->
+            0
+        Ok n ->
+            if n < 0 || n > 6 then
+                0
+            else
+                n
+
+computeUserDice : Model -> Maybe (List Int)
+computeUserDice model =
+    let diceNumber = getDiceCount model
+        digits = List.map String.fromChar <| String.toList model.diceString
+    in
+        if diceNumber /= List.length digits then
+            Nothing
+        else
+            Just
+            <| List.map dieNum digits                
+
 lookupDice : Model -> Model
 lookupDice model =
-    case LE.find (\x -> x == 0) (Array.toList model.dice) of
-        Just _ ->
-            model
+    case computeUserDice model of
         Nothing ->
-            let count = model.count
-                strings = model.strings
-                stringsTail = List.drop
-                                ((List.length strings) - count + 1) strings
-                idx = List.foldl
-                        (\x y -> (6 * y) + x - 1)
-                        0
-                        <| Array.toList model.dice
-                string = case Array.get idx <| getArray model of
-                             Nothing -> "a"
-                             Just x -> x
-            in
-                { model
-                    | strings = List.append stringsTail [string]
-                    , isSecure = True
-                }
+            model
+        Just dice ->
+            case LE.find (\x -> x == 0) dice of
+                Just _ ->
+                    model
+                Nothing ->
+                    let count = model.count
+                        strings = model.strings
+                        stringsTail = List.drop
+                                      ((List.length strings) - count + 1) strings
+                        idx = List.foldl
+                              (\x y -> (6 * y) + x - 1)
+                              0
+                              dice
+                        string = case Array.get idx <| getArray model of
+                                     Nothing -> "a"
+                                     Just x -> x
+                in
+                    { model
+                        | strings = List.append stringsTail [string]
+                        , isSecure = True
+                        , diceString = ""
+                    }
 
 nbsp : String
 nbsp =
     String.fromList [ Char.fromCode 160 ]
 
-dieString : Int -> Model -> String
-dieString idx model =
-    case Array.get idx model.diceStrings of
-        Nothing -> ""
-        Just s -> s
-
-dieInputs : Model -> List (Html Msg)
-dieInputs model =
-    List.intersperse
-        (text " ")
-        <| List.map (\x ->
-                         input
-                           [ size 1
-                           , onInput <| UpdateDie x
-                           , value <| dieString x model
-                           ]
-                           []
-                    )
-            ( if (getDice model) == 5 then
-                  [0, 1, 2, 3, 4]
-              else
-                  [0, 1, 2, 3]
-            )
-
 br : Html Msg
 br =
     Html.br [] []
+
+onKeyDown : (Int -> msg) -> Attribute msg
+onKeyDown tagger =
+  on "keydown" (Json.map tagger keyCode)
 
 view : Model -> Html Msg
 view model =
@@ -343,11 +340,20 @@ view model =
         , h3 []
             [ text "Roll Your Own Dice" ]
         , p []
-            <| List.append
-                 (dieInputs model)
-                 [ text " "
-                 , button [ onClick LookupDice ] [ text "Lookup" ]
-                 ]
+            [ input
+              ( let count = getDiceCount model
+                in
+                    [ size count
+                    , maxlength count
+                    , onKeyDown DiceKeydown
+                    , onInput <| UpdateDice
+                    , value model.diceString
+                    ]
+              )
+                  []
+            , text " "
+            , button [ onClick LookupDice ] [ text "Lookup" ]
+            ]
         , p []
             [ text "To generate a passphrase, choose which of the three lists to use from the selector (initially \"EFF Short List\"), fill in \"Words\" with the number of words to generate, and click the \"Generate\" button. To clear the word string, click \"Clear\"."
             ]
@@ -361,7 +367,7 @@ view model =
                            "your browser does not support it."
             ]
         , p []
-            [ text "If you prefer rolling your own dice to using your computer's random number generator, you can fill in the four or five boxes to the left of the \"Lookup\" button with the numbers (1-6) from four or five six-sided dice rolls, then click that button. It will add one word to the end of the list."
+            [ text "If you prefer rolling your own dice to using your computer's random number generator, you can type into the box to the left of the \"Lookup\" button four or five numbers (from 1-6) from four or five six-sided dice rolls, then click that button (four dice rolls for the \"EFF Short List\" or five for the other two). It will add one word to the end of the list."
             ]
         , p []
             [ text "The three lists are as follows:"
