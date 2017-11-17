@@ -24,7 +24,8 @@ import Html exposing ( Html, Attribute
                      , ul, li
                      )
 import Html.Attributes exposing ( value, size, maxlength, href, src, title
-                                , alt, style, selected )
+                                , alt, style, selected, readonly
+                                )
 import Html.Events exposing ( onClick, onInput, on, keyCode )
 import Array exposing ( Array )
 import Char
@@ -321,24 +322,22 @@ view model =
                   <| " Entropy: "
                   ++ (toString <| round <| getEntropy model) ++ " bits"
             ]
-        , p [ style [ ( "margin-left", "1em" )
-                    , ( "font-size", "150%" )
-                    , ( "color"
-                      , if model.isSecure then
-                            "black"
-                        else
-                            "red"
-                      )
-                    ]
-            ]
-            ( let strings = case model.strings of
-                                [] -> [nbsp]
-                                ss -> ss
-              in
-                  List.intersperse
-                    (text " ")
-                    <| List.map text strings
-            )
+        , let string = String.join " " model.strings
+          in
+              div []
+                  [ p [ style [ ( "margin-left", "1em" )
+                              , ( "font-size", "150%" )
+                              , ( "padding-left", "0.5em" )
+                              , ( "color"
+                                , if model.isSecure then
+                                      "black"
+                                  else
+                                      "red"
+                                )
+                              ]
+                      ]
+                        [ text string ]
+                  ]
         , h3 []
             [ text "Roll Your Own Dice" ]
         , p []
