@@ -74,7 +74,9 @@ type DicewareTable
 
 type alias Modifications =
     { spaces : Bool
+    , showTotalLength : Bool
     , totalLength : Int
+    , uppercase : Int
     , numbers : Int
     , specialChars : Int
     }
@@ -83,7 +85,9 @@ type alias Modifications =
 defaultModifications : Modifications
 defaultModifications =
     { spaces = True
-    , totalLength = 0
+    , showTotalLength = False
+    , totalLength = 30
+    , uppercase = 0
     , numbers = 0
     , specialChars = 0
     }
@@ -219,10 +223,19 @@ type Msg
     | ChangeTable String
     | ToggleModifications
     | ToggleSpaces
+    | ToggleShowTotalLength
+    | UpdateTotalLength String
+    | UpdateUpperCase String
+    | UpdateNumbers String
+    | UpdateSpecialChars String
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
+    let
+        modifications =
+            model.modifications
+    in
     case msg of
         UpdateCount countString ->
             ( { model
@@ -328,16 +341,59 @@ update msg model =
             )
 
         ToggleSpaces ->
-            let
-                modifications =
-                    model.modifications
-            in
             ( { model
                 | modifications =
                     { modifications
                         | spaces = not modifications.spaces
                     }
               }
+            , Cmd.none
+            )
+
+        ToggleShowTotalLength ->
+            ( { model
+                | modifications =
+                    { modifications
+                        | showTotalLength = not modifications.showTotalLength
+                    }
+              }
+            , Cmd.none
+            )
+
+        UpdateTotalLength string ->
+            updateModificationsInt
+                (if string == "" then
+                    "0"
+                 else
+                    string
+                )
+                (\int -> { modifications | totalLength = int })
+                model
+
+        UpdateUpperCase string ->
+            updateModificationsInt string
+                (\int -> { modifications | uppercase = int })
+                model
+
+        UpdateNumbers string ->
+            updateModificationsInt string
+                (\int -> { modifications | numbers = int })
+                model
+
+        UpdateSpecialChars string ->
+            updateModificationsInt string
+                (\int -> { modifications | specialChars = int })
+                model
+
+
+updateModificationsInt : String -> (Int -> Modifications) -> Model -> ( Model, Cmd Msg )
+updateModificationsInt string setter model =
+    case String.toInt string of
+        Err _ ->
+            ( model, Cmd.none )
+
+        Ok int ->
+            ( { model | modifications = setter int }
             , Cmd.none
             )
 
@@ -585,6 +641,8 @@ view model =
             [ text "If you prefer rolling your own dice to using your computer's random number generator, you can type into the box to the left of the \"Lookup\" button four or five numbers (from 1-6) from four or five six-sided dice rolls, then click that button (four dice rolls for the \"EFF Short List\" or five for the other two). It will add one word to the end of the list."
             ]
         , p []
+            [ text "If you select the \"modifications\" check-box, you can choose whether to put spaces between the words, the maximum password length, and how many numeric and special characters to put in the result. This allows you to easily satisfy the most common password requirements from people who don't understand that length is the only password property that really matters for security." ]
+        , p []
             [ text "The three lists are as follows:"
             , ul []
                 [ li []
@@ -631,6 +689,26 @@ view model =
         ]
 
 
+numberSelector : Int -> Int -> (String -> Msg) -> Html Msg
+numberSelector current max wrapper =
+    let
+        intOption i =
+            option
+                [ value <| toString i
+                , selected (i == current)
+                ]
+                [ text <|
+                    if i == 0 then
+                        "none"
+                    else
+                        toString i
+                ]
+    in
+    select [ onInput wrapper ] <|
+        List.map intOption <|
+            List.range 0 max
+
+
 renderModifications : Model -> Html Msg
 renderModifications model =
     let
@@ -638,7 +716,34 @@ renderModifications model =
             model.modifications
     in
     div [ style [ ( "margin-left", "1em" ) ] ]
-        [ checkbox modifications.spaces ToggleSpaces "spaces" ]
+        [ checkbox modifications.spaces ToggleSpaces "spaces"
+        , br
+        , checkbox modifications.showTotalLength
+            ToggleShowTotalLength
+            (if modifications.showTotalLength then
+                "limit length: "
+             else
+                "limit length"
+            )
+        , if not modifications.showTotalLength then
+            text ""
+          else
+            input
+                [ size 3
+                , onInput UpdateTotalLength
+                , value <| toString modifications.totalLength
+                ]
+                []
+        , br
+        , text "uppercase letters: "
+        , numberSelector modifications.uppercase 5 UpdateUpperCase
+        , br
+        , text "numbers: "
+        , numberSelector modifications.numbers 5 UpdateNumbers
+        , br
+        , text "special chars: "
+        , numberSelector modifications.specialChars 5 UpdateSpecialChars
+        ]
 
 
 effListLink : Html msg
