@@ -531,8 +531,214 @@ checkbox isChecked msg name =
         ]
 
 
+{-| <https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416>
+-}
+specialChars : String
+specialChars =
+    "!@#$%"
+
+
+numbers : String
+numbers =
+    "1234567890"
+
+
+modifyStrings : Model -> String
+modifyStrings model =
+    if not model.enableModifications then
+        String.join " " model.strings
+    else
+        let
+            mods =
+                model.modifications
+
+            count =
+                List.length model.strings
+
+            spaces =
+                count - 1
+
+            changes1 =
+                String.left mods.numbers numbers
+                    ++ String.left mods.specialChars specialChars
+
+            added =
+                String.length changes1
+
+            length =
+                List.foldl (\s sum -> sum + String.length s) 0 model.strings
+
+            trim =
+                if mods.showTotalLength then
+                    max 0 <| length + added - mods.totalLength
+                else
+                    0
+
+            strings1 =
+                trimStrings trim model.strings
+
+            strings =
+                addUppercase mods.uppercase strings1
+
+            newlen =
+                length + added - trim
+
+            addspaces1 =
+                if mods.showTotalLength then
+                    max 0 (min (spaces - added) (mods.totalLength - newlen))
+                else
+                    max 0 (spaces - added)
+
+            addspaces =
+                if addspaces1 < spaces - added then
+                    0
+                else
+                    addspaces1
+
+            changes =
+                changes1 ++ String.repeat addspaces " "
+
+            res =
+                distributeChanges changes strings
+        in
+        if not mods.spaces then
+            String.filter ((/=) ' ') res
+        else
+            res
+
+
+trim1 : List String -> ( List String, Bool )
+trim1 strings =
+    let
+        maxlen =
+            List.foldl (\s res -> max res (String.length s)) 0 strings
+    in
+    if maxlen <= 1 then
+        ( strings, False )
+    else
+        let
+            loop ss res =
+                case ss of
+                    [] ->
+                        -- can't happen
+                        ( List.reverse res, False )
+
+                    s :: tail ->
+                        if String.length s == maxlen then
+                            ( List.concat
+                                [ List.reverse res
+                                , [ String.dropRight 1 s ]
+                                , tail
+                                ]
+                            , True
+                            )
+                        else
+                            loop tail (s :: res)
+        in
+        loop strings []
+
+
+trimStrings : Int -> List String -> List String
+trimStrings trim strings =
+    if trim <= 0 then
+        strings
+    else
+        let
+            loop len ss =
+                if len <= 0 then
+                    ss
+                else
+                    let
+                        ( ss2, changed ) =
+                            Debug.log "trim1" <| trim1 ss
+                    in
+                    if changed then
+                        loop (len - 1) ss2
+                    else
+                        ss2
+        in
+        loop trim strings
+
+
+upcase1 : String -> ( String, Bool )
+upcase1 string =
+    let
+        loop chars res =
+            case chars of
+                [] ->
+                    ( res, False )
+
+                c :: tail ->
+                    if Char.isLower c then
+                        ( res
+                            ++ (String.fromChar <| Char.toUpper c)
+                            ++ String.fromList tail
+                        , True
+                        )
+                    else
+                        loop tail <| res ++ String.fromChar c
+    in
+    loop (String.toList string) ""
+
+
+addUppercase : Int -> List String -> List String
+addUppercase count strings =
+    let
+        loop count strings changed res =
+            if count <= 0 then
+                List.concat [ List.reverse res, strings ]
+            else
+                case strings of
+                    [] ->
+                        if changed then
+                            loop count (List.reverse res) False []
+                        else
+                            List.reverse res
+
+                    s :: tail ->
+                        let
+                            ( s2, ch ) =
+                                upcase1 s
+
+                            cnt =
+                                if ch then
+                                    count - 1
+                                else
+                                    count
+                        in
+                        loop cnt
+                            tail
+                            (changed || ch)
+                            (s2 :: res)
+    in
+    loop count strings False []
+
+
+distributeChanges : String -> List String -> String
+distributeChanges changes strings =
+    let
+        loop ch ss res =
+            if ch == "" then
+                res ++ String.concat ss
+            else
+                case ss of
+                    [] ->
+                        res ++ ch
+
+                    s :: tail ->
+                        loop (String.dropLeft 1 ch)
+                            tail
+                            (res ++ s ++ String.left 1 ch)
+    in
+    loop changes strings ""
+
+
 view : Model -> Html Msg
 view model =
+    let
+        string =
+            modifyStrings model
+    in
     div
         [ style
             [ ( "width", "40em" )
@@ -576,11 +782,7 @@ view model =
                     ++ (toString <| round <| getEntropy model)
                     ++ " bits"
             ]
-        , let
-            string =
-                String.join " " model.strings
-          in
-          div []
+        , div []
             [ p
                 [ style
                     [ ( "margin-left", "1em" )
@@ -620,7 +822,7 @@ view model =
                 ToggleModifications
                 "modifications"
             , if model.enableModifications then
-                renderModifications model
+                renderModifications (String.length string) model
               else
                 text ""
             ]
@@ -641,7 +843,7 @@ view model =
             [ text "If you prefer rolling your own dice to using your computer's random number generator, you can type into the box to the left of the \"Lookup\" button four or five numbers (from 1-6) from four or five six-sided dice rolls, then click that button (four dice rolls for the \"EFF Short List\" or five for the other two). It will add one word to the end of the list."
             ]
         , p []
-            [ text "If you select the \"modifications\" check-box, you can choose whether to put spaces between the words, the maximum password length, and how many numeric and special characters to put in the result. This allows you to easily satisfy the most common password requirements from people who don't understand that length is the only password property that really matters for security." ]
+            [ text "If you check the \"modifications\" box, you can choose whether to put spaces between the words, the maximum password length, and how many upper case, numeric, and special characters to put in the result. This allows you to easily satisfy the most common password requirements from people who don't understand that length is the only password property that really matters for security." ]
         , p []
             [ text "The three lists are as follows:"
             , ul []
@@ -684,7 +886,7 @@ view model =
             , a [ href "https://github.com/billstclair/elm-dev-random" ]
                 [ text "github.com/billstclair/elm-dev-random" ]
             , br
-            , text "Copyright 2017 Bill St. Clair"
+            , text "Copyright 2017-2018 Bill St. Clair"
             ]
         ]
 
@@ -709,8 +911,8 @@ numberSelector current max wrapper =
             List.range 0 max
 
 
-renderModifications : Model -> Html Msg
-renderModifications model =
+renderModifications : Int -> Model -> Html Msg
+renderModifications length model =
     let
         modifications =
             model.modifications
@@ -728,12 +930,19 @@ renderModifications model =
         , if not modifications.showTotalLength then
             text ""
           else
-            input
-                [ size 3
-                , onInput UpdateTotalLength
-                , value <| toString modifications.totalLength
+            span []
+                [ input
+                    [ size 3
+                    , onInput UpdateTotalLength
+                    , value <| toString modifications.totalLength
+                    ]
+                    []
+                , if length > modifications.totalLength then
+                    span [ style [ ( "color", "red" ) ] ]
+                        [ text " too short" ]
+                  else
+                    text ""
                 ]
-                []
         , br
         , text "uppercase letters: "
         , numberSelector modifications.uppercase 5 UpdateUpperCase
