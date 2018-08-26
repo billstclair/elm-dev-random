@@ -1,0 +1,16 @@
+{
+    "type": "package",
+    "name": "billstclair/elm-dev-random",
+    "summary": "Cryptographically secure random-number generator.",
+    "license": "MIT",
+    "version": "1.1.6",
+    "exposed-modules": [
+        "DevRandom"
+    ],
+    "elm-version": "0.19.0 <= v < 0.20.0",
+    "dependencies": {
+        "elm/core": "1.0.0 <= v < 2.0.0",
+        "elm/random": "1.0.0 <= v < 2.0.0"
+    },
+    "test-dependencies": {}
+}

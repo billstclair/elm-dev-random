@@ -4,5 +4,5 @@ The `DevRandom` module contains a pure Elm API, using the standard Elm `Random` 
 
 The package name is a reflection of `/dev/random`, the OS-provided cryptographically-secure random number generator for Unix-like systems (e.g. Linux and MacOS).
 
-Bill St. Clair &lt;<billstclair@gmail.com>&gt;<br/>
+Bill St. Clair &lt;<billstclair@gmail.com>&gt; --
 28 February 2017

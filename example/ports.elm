@@ -9,25 +9,32 @@
 --
 ----------------------------------------------------------------------
 
-port module Main exposing (..)
 
+port module Main exposing (getDevRandomInt, init, main, receiveRandomInt, subscriptions)
+
+import Browser
 import Diceware exposing (Model, Msg(..))
-import Html exposing (Html)
+
 
 port getDevRandomInt : Int -> Cmd msg
-port receiveRandomInt : ((Bool, Int) -> msg) -> Sub msg
+
+
+port receiveRandomInt : (( Bool, Int ) -> msg) -> Sub msg
+
 
 main =
-    Html.programWithFlags
+    Browser.element
         { init = init
         , view = Diceware.view
         , update = Diceware.update
         , subscriptions = subscriptions
         }
 
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     Diceware.init <| Just getDevRandomInt
+
 
 subscriptions : Model -> Sub Msg
 subscriptions model =

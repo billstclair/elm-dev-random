@@ -9,15 +9,17 @@
 --
 ----------------------------------------------------------------------
 
-module Main exposing (..)
 
+module Main exposing (main)
+
+import Browser
 import Diceware
-import Html exposing (Html)
+
 
 main =
-    Html.program
-        { init = Diceware.init Nothing
+    Browser.element
+        { init = \() -> Diceware.init Nothing
         , view = Diceware.view
         , update = Diceware.update
-        , subscriptions = (\x -> Sub.none)
+        , subscriptions = \x -> Sub.none
         }

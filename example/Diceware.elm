@@ -10,14 +10,13 @@
 ----------------------------------------------------------------------
 
 
-module Diceware
-    exposing
-        ( Model
-        , Msg(ReceiveInt)
-        , init
-        , update
-        , view
-        )
+module Diceware exposing
+    ( Model
+    , Msg(..)
+    , init
+    , update
+    , view
+    )
 
 import Array exposing (Array)
 import Char
@@ -128,7 +127,7 @@ makeInitialModel count sendPort =
 
         model =
             { config = config
-            , countString = toString count
+            , countString = String.fromInt count
             , count = count
             , strings = []
             , isSecure = True
@@ -230,6 +229,16 @@ type Msg
     | UpdateSpecialChars String
 
 
+stringToInt : String -> Result String Int
+stringToInt string =
+    case String.toInt string of
+        Just int ->
+            Ok int
+
+        Nothing ->
+            Err "invalid integer string"
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
@@ -241,7 +250,7 @@ update msg model =
             ( { model
                 | countString = countString
                 , count =
-                    case String.toInt countString of
+                    case stringToInt countString of
                         Ok count ->
                             max 0 (min count 20)
 
@@ -261,6 +270,7 @@ update msg model =
         DiceKeydown keycode ->
             ( if keycode == 13 then
                 lookupDice model
+
               else
                 model
             , Cmd.none
@@ -305,6 +315,7 @@ update msg model =
               }
             , if List.length strings >= model.count then
                 Cmd.none
+
               else
                 DevRandom.generateInt (getCount model) model.config
             )
@@ -328,7 +339,7 @@ update msg model =
             ( { model
                 | whichTable = stringToTable table
                 , count = count
-                , countString = toString count
+                , countString = String.fromInt count
                 , strings = []
                 , diceString = ""
               }
@@ -364,6 +375,7 @@ update msg model =
             updateModificationsInt
                 (if string == "" then
                     "0"
+
                  else
                     string
                 )
@@ -388,7 +400,7 @@ update msg model =
 
 updateModificationsInt : String -> (Int -> Modifications) -> Model -> ( Model, Cmd Msg )
 updateModificationsInt string setter model =
-    case String.toInt string of
+    case stringToInt string of
         Err _ ->
             ( model, Cmd.none )
 
@@ -431,13 +443,14 @@ stringToTable table =
 
 dieNum : String -> Int
 dieNum string =
-    case String.toInt string of
+    case stringToInt string of
         Err _ ->
             0
 
         Ok n ->
             if n < 0 || n > 6 then
                 0
+
             else
                 n
 
@@ -453,6 +466,7 @@ computeUserDice model =
     in
     if diceNumber /= List.length digits then
         Nothing
+
     else
         Just <|
             List.map dieNum digits
@@ -531,7 +545,7 @@ checkbox isChecked msg name =
         ]
 
 
-{-| <https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416>
+{-| [[[[[[[https://docs.oracle.com/cd/E11223\_01/doc.910/e11197/app\_special\_char.htm#MCMAD416](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)
 -}
 specialChars : String
 specialChars =
@@ -547,6 +561,7 @@ modifyStrings : Model -> String
 modifyStrings model =
     if not model.enableModifications then
         String.join " " model.strings
+
     else
         let
             mods =
@@ -571,6 +586,7 @@ modifyStrings model =
             trim =
                 if mods.showTotalLength then
                     max 0 <| length + added - mods.totalLength
+
                 else
                     0
 
@@ -586,12 +602,14 @@ modifyStrings model =
             addspaces1 =
                 if mods.showTotalLength then
                     max 0 (min (spaces - added) (mods.totalLength - newlen))
+
                 else
                     max 0 (spaces - added)
 
             addspaces =
                 if addspaces1 < spaces - added then
                     0
+
                 else
                     addspaces1
 
@@ -603,6 +621,7 @@ modifyStrings model =
         in
         if not mods.spaces then
             String.filter ((/=) ' ') res
+
         else
             res
 
@@ -615,6 +634,7 @@ trim1 strings =
     in
     if maxlen <= 1 then
         ( strings, False )
+
     else
         let
             loop ss res =
@@ -632,6 +652,7 @@ trim1 strings =
                                 ]
                             , True
                             )
+
                         else
                             loop tail (s :: res)
         in
@@ -642,11 +663,13 @@ trimStrings : Int -> List String -> List String
 trimStrings trim strings =
     if trim <= 0 then
         strings
+
     else
         let
             loop len ss =
                 if len <= 0 then
                     ss
+
                 else
                     let
                         ( ss2, changed ) =
@@ -654,6 +677,7 @@ trimStrings trim strings =
                     in
                     if changed then
                         loop (len - 1) ss2
+
                     else
                         ss2
         in
@@ -675,6 +699,7 @@ upcase1 string =
                             ++ String.fromList tail
                         , True
                         )
+
                     else
                         loop tail <| res ++ String.fromChar c
     in
@@ -684,14 +709,16 @@ upcase1 string =
 addUppercase : Int -> List String -> List String
 addUppercase count strings =
     let
-        loop count strings changed res =
-            if count <= 0 then
-                List.concat [ List.reverse res, strings ]
+        loop cnt stringsTail changed res =
+            if cnt <= 0 then
+                List.concat [ List.reverse res, stringsTail ]
+
             else
-                case strings of
+                case stringsTail of
                     [] ->
                         if changed then
-                            loop count (List.reverse res) False []
+                            loop cnt (List.reverse res) False []
+
                         else
                             List.reverse res
 
@@ -700,13 +727,14 @@ addUppercase count strings =
                             ( s2, ch ) =
                                 upcase1 s
 
-                            cnt =
+                            cnt2 =
                                 if ch then
-                                    count - 1
+                                    cnt - 1
+
                                 else
-                                    count
+                                    cnt
                         in
-                        loop cnt
+                        loop cnt2
                             tail
                             (changed || ch)
                             (s2 :: res)
@@ -720,6 +748,7 @@ distributeChanges changes strings =
         loop ch ss res =
             if ch == "" then
                 res ++ String.concat ss
+
             else
                 case ss of
                     [] ->
@@ -740,10 +769,8 @@ view model =
             modifyStrings model
     in
     div
-        [ style
-            [ ( "width", "40em" )
-            , ( "margin-left", "2em" )
-            ]
+        [ style "width" "40em"
+        , style "margin-left" "2em"
         ]
         [ h2 [] [ text "Diceware Passphrase Generator" ]
         , p []
@@ -779,22 +806,21 @@ view model =
             , button [ onClick Clear ] [ text "Clear" ]
             , text <|
                 " Entropy: "
-                    ++ (toString <| round <| getEntropy model)
+                    ++ (String.fromInt <| round <| getEntropy model)
                     ++ " bits"
             ]
         , div []
             [ p
-                [ style
-                    [ ( "margin-left", "1em" )
-                    , ( "font-size", "150%" )
-                    , ( "padding-left", "0.5em" )
-                    , ( "color"
-                      , if model.isSecure then
-                            "black"
-                        else
-                            "red"
-                      )
-                    ]
+                [ style "margin-left" "1em"
+                , style "font-size" "150%"
+                , style "padding-left" "0.5em"
+                , style "color"
+                    (if model.isSecure then
+                        "black"
+
+                     else
+                        "red"
+                    )
                 ]
                 [ text string ]
             ]
@@ -823,6 +849,7 @@ view model =
                 "modifications"
             , if model.enableModifications then
                 renderModifications (String.length string) model
+
               else
                 text ""
             ]
@@ -896,14 +923,15 @@ numberSelector current max wrapper =
     let
         intOption i =
             option
-                [ value <| toString i
+                [ value <| String.fromInt i
                 , selected (i == current)
                 ]
                 [ text <|
                     if i == 0 then
                         "none"
+
                     else
-                        toString i
+                        String.fromInt i
                 ]
     in
     select [ onInput wrapper ] <|
@@ -917,29 +945,32 @@ renderModifications length model =
         modifications =
             model.modifications
     in
-    div [ style [ ( "margin-left", "1em" ) ] ]
+    div [ style "margin-left" "1em" ]
         [ checkbox modifications.spaces ToggleSpaces "spaces"
         , br
         , checkbox modifications.showTotalLength
             ToggleShowTotalLength
             (if modifications.showTotalLength then
                 "limit length: "
+
              else
                 "limit length"
             )
         , if not modifications.showTotalLength then
             text ""
+
           else
             span []
                 [ input
                     [ size 3
                     , onInput UpdateTotalLength
-                    , value <| toString modifications.totalLength
+                    , value <| String.fromInt modifications.totalLength
                     ]
                     []
                 , if length > modifications.totalLength then
-                    span [ style [ ( "color", "red" ) ] ]
+                    span [ style "color" "red" ]
                         [ text " too short" ]
+
                   else
                     text ""
                 ]

@@ -9,9 +9,11 @@
 --
 ----------------------------------------------------------------------
 
-module NewDicewareStrings exposing ( array, count )
+
+module NewDicewareStrings exposing (array, count)
 
 import Array exposing (Array)
+
 
 array : Array String
 array =
@@ -19,9 +21,11 @@ array =
         |> List.concat
         |> Array.fromList
 
+
 count : Int
 count =
     Array.length array
+
 
 dicewareStrings : List String
 dicewareStrings =
