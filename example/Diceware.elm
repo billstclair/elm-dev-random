@@ -92,8 +92,14 @@ defaultModifications =
     }
 
 
+type RandomReason
+    = RandomPassphrase
+    | RandomNumber
+
+
 type alias Model =
     { config : IntConfig Msg
+    , randomReason : RandomReason
     , countString : String
     , count : Int
     , strings : List String
@@ -102,6 +108,9 @@ type alias Model =
     , diceString : String
     , enableModifications : Bool
     , modifications : Modifications
+    , randomMaxString : String
+    , randomMax : Int
+    , randomNumber : Int
     }
 
 
@@ -127,6 +136,7 @@ makeInitialModel count sendPort =
 
         model =
             { config = config
+            , randomReason = RandomPassphrase
             , countString = String.fromInt count
             , count = count
             , strings = []
@@ -135,6 +145,9 @@ makeInitialModel count sendPort =
             , diceString = ""
             , enableModifications = False
             , modifications = defaultModifications
+            , randomMaxString = "100"
+            , randomMax = 0
+            , randomNumber = 10
             }
     in
     model
@@ -149,7 +162,7 @@ init sendPort =
         model =
             makeInitialModel count sendPort
     in
-    ( model
+    ( { model | randomReason = RandomPassphrase }
     , DevRandom.generateInt (getCount model) model.config
     )
 
@@ -227,6 +240,9 @@ type Msg
     | UpdateUpperCase String
     | UpdateNumbers String
     | UpdateSpecialChars String
+    | RandomMaxDown Int
+    | UpdateRandomMaxString String
+    | GenerateRandomNumber
 
 
 stringToInt : String -> Result String Int
@@ -284,7 +300,10 @@ update msg model =
                     )
 
                 _ ->
-                    ( { model | strings = [] }
+                    ( { model
+                        | strings = []
+                        , randomReason = RandomPassphrase
+                      }
                     , DevRandom.generateInt (getCount model) model.config
                     )
 
@@ -297,28 +316,39 @@ update msg model =
             )
 
         ReceiveInt ( isSecure, idx ) ->
-            let
-                string =
-                    case Array.get idx <| getArray model of
-                        Nothing ->
-                            "a"
+            case model.randomReason of
+                RandomNumber ->
+                    ( { model
+                        | randomNumber = idx + 1
+                        , isSecure = isSecure
+                      }
+                    , Cmd.none
+                    )
 
-                        Just s ->
-                            s
+                RandomPassphrase ->
+                    let
+                        string =
+                            case Array.get idx <| getArray model of
+                                Nothing ->
+                                    "a"
 
-                strings =
-                    string :: model.strings
-            in
-            ( { model
-                | strings = strings
-                , isSecure = isSecure
-              }
-            , if List.length strings >= model.count then
-                Cmd.none
+                                Just s ->
+                                    s
 
-              else
-                DevRandom.generateInt (getCount model) model.config
-            )
+                        strings =
+                            string :: model.strings
+                    in
+                    ( { model
+                        | strings = strings
+                        , isSecure = isSecure
+                        , randomReason = RandomPassphrase
+                      }
+                    , if List.length strings >= model.count then
+                        Cmd.none
+
+                      else
+                        DevRandom.generateInt (getCount model) model.config
+                    )
 
         LookupDice ->
             ( lookupDice model
@@ -342,6 +372,7 @@ update msg model =
                 , countString = String.fromInt count
                 , strings = []
                 , diceString = ""
+                , randomReason = RandomPassphrase
               }
             , DevRandom.generateInt count model.config
             )
@@ -396,6 +427,41 @@ update msg model =
             updateModificationsInt string
                 (\int -> { modifications | specialChars = int })
                 model
+
+        -- TODO
+        RandomMaxDown keycode ->
+            if keycode == 13 then
+                update GenerateRandomNumber model
+
+            else
+                ( model, Cmd.none )
+
+        UpdateRandomMaxString string ->
+            ( { model | randomMaxString = string }
+            , Cmd.none
+            )
+
+        GenerateRandomNumber ->
+            let
+                mdl =
+                    { model | randomNumber = 0 }
+            in
+            case String.toInt model.randomMaxString of
+                Nothing ->
+                    ( mdl, Cmd.none )
+
+                Just max ->
+                    if max <= 0 then
+                        ( mdl, Cmd.none )
+
+                    else
+                        ( { mdl
+                            | randomReason = RandomNumber
+                            , randomMax = max
+                            , randomNumber = 0
+                          }
+                        , DevRandom.generateInt max model.config
+                        )
 
 
 updateModificationsInt : String -> (Int -> Modifications) -> Model -> ( Model, Cmd Msg )
@@ -545,7 +611,7 @@ checkbox isChecked msg name =
         ]
 
 
-{-| [[[[[[[https://docs.oracle.com/cd/E11223\_01/doc.910/e11197/app\_special\_char.htm#MCMAD416](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)
+{-| [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[https://docs.oracle.com/cd/E11223\_01/doc.910/e11197/app\_special\_char.htm#MCMAD416](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)
 -}
 specialChars : String
 specialChars =
@@ -853,6 +919,50 @@ view model =
               else
                 text ""
             ]
+        , h3 []
+            [ text "Generate a Random Number" ]
+        , p []
+            [ Html.b [] [ text "N: " ]
+            , input
+                [ size 8
+                , maxlength 8
+                , onKeyDown RandomMaxDown
+                , onInput UpdateRandomMaxString
+                , value model.randomMaxString
+                ]
+                []
+            , text " "
+            , button [ onClick GenerateRandomNumber ] [ text "Random from 1 to N" ]
+            ]
+        , p []
+            (if model.randomMax <= 0 then
+                []
+
+             else
+                [ p []
+                    [ Html.b []
+                        [ text
+                            ("Random number from 1 to "
+                                ++ String.fromInt model.randomMax
+                                ++ ": "
+                            )
+                        ]
+                    ]
+                , p
+                    [ style "margin-left" "1em"
+                    , style "font-size" "150%"
+                    , style "padding-left" "0.5em"
+                    , style "color"
+                        (if model.isSecure then
+                            "black"
+
+                         else
+                            "red"
+                        )
+                    ]
+                    [ text <| String.fromInt model.randomNumber ]
+                ]
+            )
         , p []
             [ text "To generate a passphrase, choose which of the three lists to use from the selector (initially \"EFF Short List\"), fill in \"Words\" with the number of words to generate, and click the \"Generate\" button. To clear the word string, click \"Clear\"."
             ]
@@ -871,6 +981,8 @@ view model =
             ]
         , p []
             [ text "If you check the \"modifications\" box, you can choose whether to put spaces between the words, the maximum password length, and how many upper case, numeric, and special characters to put in the result. This allows you to easily satisfy the most common password requirements from people who don't understand that length is the only password property that really matters for security." ]
+        , p []
+            [ text "If you enter \"N\" and click \"Random from 1 to N\", a random number between 1 and N will be printed below that line." ]
         , p []
             [ text "The three lists are as follows:"
             , ul []
