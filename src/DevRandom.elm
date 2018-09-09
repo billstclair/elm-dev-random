@@ -11,89 +11,326 @@
 
 
 module DevRandom exposing
-    ( SendPort, ReceiveMsgWrapper, Config
-    , generate
-    , ReceiveIntMsgWrapper, IntConfig
-    , generateInt
+    ( Message(..), Response(..), State
+    , moduleName, moduleDesc, commander
+    , initialState
+    , send
+    , toString, toJsonString
+    , makeSimulatedCmdPort
     )
 
-{-| The `DevRandom` module provides a way to generate cryptographically-secure random numbers. It does this by using two ports to communicate with JavaScript code that calls `window.crypto.getRandomValues()`.
+{-| The `DevRandom` module provides a `billstclair/elm-port-funnel` funnel to generate cryptographically-secure random numbers. It does this with JavaScript code that calls `window.crypto.getRandomValues()`.
 
-There are two ways to call the generator, depending on the `Config` parameter to `generate`. One way works in a pure Elm environment, and uses the normal Elm `Random` module, which is _not_ cryptographically secure. The other way requires you to use ports to communicate with JavaScript code, most of which is provided with the example.
+There is a simulator that uses the standard Elm `Random` module, which is NOT cryptographically secure. See [example/Diceware.elm](https://github.com/billstclair/elm-dev-random/blob/master/example/Diceware.elm) for how to use it.
 
 See the [example readme](https://github.com/billstclair/elm-dev-random/tree/master/example) for instructions on creating the ports and using the included JavaScript code.
 
 
-# Generate random bytes
+# Types
 
-@docs SendPort, ReceiveMsgWrapper, Config
-@docs generate
+@docs Message, Response, State
 
 
-# Generate random integers
+# Components of a `PortFunnel.FunnelSpec`
 
-@docs ReceiveIntMsgWrapper, IntConfig
-@docs generateInt
+@docs moduleName, moduleDesc, commander
+
+
+# Initial `State`
+
+@docs initialState
+
+
+# Sending a `Message` out the `Cmd` Port
+
+@docs send
+
+
+# Conversion to Strings
+
+@docs toString, toJsonString
+
+
+# Simulator
+
+@docs makeSimulatedCmdPort
 
 -}
 
+import Json.Decode as JD exposing (Decoder)
+import Json.Encode as JE exposing (Value)
+import PortFunnel exposing (GenericMessage, ModuleDesc)
 import Random
 
 
-{-| Signature of send port for dev-random-port.js
+{-| Our internal state.
 
-The `Int` arg is the number of bytes (8-bit integers) to generate.
-
--}
-type alias SendPort msg =
-    Int -> Cmd msg
-
-
-{-| Message wrapper for receive port of dev-random-port.js
-
-    (isSecure, bytes) -> msg
-
-If isSecure is True, then the random number generation was cryptographically secure.
+This module's state is only used by the simulator. If you don't save it,
+the simulator will always use the same random seed.
 
 -}
-type alias ReceiveMsgWrapper msg =
-    ( Bool, List Int ) -> msg
+type State
+    = State Random.Seed
 
 
-{-| Parameter to `generate` that determines whether to use the Elm `Random` module or ports to the JavaScript code that calls `window.crypto.getRandomValues()`.
+{-| A `MessageResponse` encapsulates a message.
 
-If `sendPort` is not `Nothing`, will use the ports.
+`RandomBytesResponse` wraps a list of integers and whether their generation was cryptographically secure.
 
-If `sendPort` is `Nothing`, and `receiveMsgWrapper` is not `Nothing`, will use the Elm `Random` module.
+`RandomIntResponse` wraps an integer and whether its generation was cryptographically secure.
 
 -}
-type alias Config msg =
-    { sendPort : Maybe (SendPort msg)
-    , receiveMsgWrapper : Maybe (ReceiveMsgWrapper msg)
+type Response
+    = NoResponse
+    | RandomBytesResponse
+        { isSecure : Bool
+        , bytes : List Int
+        }
+    | RandomIntResponse
+        { isSecure : Bool
+        , int : Int
+        }
+
+
+type alias RandomBytesRecord =
+    { isSecure : Bool
+    , bytes : List Int
     }
 
 
-{-| Generate a number of random bytes (integers between 0 and 255, inclusive).
+type alias RandomIntRecord =
+    { isSecure : Bool
+    , int : Int
+    }
 
-    generate bytes config
 
-If `config.sendPort` is not `Nothing`, return a `Cmd` that sends `bytes` through the port. Otherwise, if `config.receiveMsgWrapper` is not `Nothing`, use it to wrap the result of `Random.generate()` as a message for your `update` function.
+{-| The `GenerateBytes` message requests a list of random bytes of the given size.
+
+The `RandomBytes` message returns those random bytes.
+
+The `GenerateInt` message requests a random integer >= 0 and < its arg.
+
+The `RandomInt` message returns that integer.
+
+The `SimulateBytes` and `SimulateInt` messages are used internally by the simulator.
 
 -}
-generate : Int -> Config msg -> Cmd msg
-generate bytes config =
-    case config.sendPort of
-        Just thePort ->
-            thePort bytes
+type Message
+    = GenerateBytes Int
+    | GenerateInt Int
+    | RandomBytes RandomBytesRecord
+    | RandomInt RandomIntRecord
+    | SimulateBytes Int
+    | SimulateInt Int
 
-        Nothing ->
-            case config.receiveMsgWrapper of
-                Nothing ->
-                    Cmd.none
 
-                Just wrapper ->
-                    generator bytes
-                        |> Random.generate (\x -> wrapper ( False, x ))
+{-| The initial state. Encapsulates a `Random.Seed`.
+
+The arg is passed to `Random.initialSeed`. This is used only by the simulator,
+so if you're using the JS code for real random numbers, passing 0 here is fine.
+
+-}
+initialState : Int -> State
+initialState int =
+    State <| Random.initialSeed int
+
+
+{-| The name of this funnel: "DevRandom".
+-}
+moduleName : String
+moduleName =
+    "DevRandom"
+
+
+{-| Our module descriptor.
+-}
+moduleDesc : ModuleDesc Message State Response
+moduleDesc =
+    PortFunnel.makeModuleDesc moduleName encode decode process
+
+
+encode : Message -> GenericMessage
+encode message =
+    case message of
+        GenerateBytes bytes ->
+            GenericMessage moduleName "generatebytes" <| JE.int bytes
+
+        GenerateInt ceiling ->
+            GenericMessage moduleName "generateint" <| JE.int ceiling
+
+        RandomBytes { isSecure, bytes } ->
+            GenericMessage moduleName "randombytes" <|
+                JE.object
+                    [ ( "isSecure", JE.bool isSecure )
+                    , ( "bytes", JE.list JE.int bytes )
+                    ]
+
+        RandomInt { isSecure, int } ->
+            GenericMessage moduleName "randomint" <|
+                JE.object
+                    [ ( "isSecure", JE.bool isSecure )
+                    , ( "int", JE.int int )
+                    ]
+
+        SimulateBytes bytes ->
+            GenericMessage moduleName "simulatebytes" <| JE.int bytes
+
+        SimulateInt ceiling ->
+            GenericMessage moduleName "simulateint" <| JE.int ceiling
+
+
+randomBytesDecoder : Decoder RandomBytesRecord
+randomBytesDecoder =
+    JD.map2 RandomBytesRecord
+        (JD.field "isSecure" JD.bool)
+        (JD.field "bytes" <| JD.list JD.int)
+
+
+randomIntDecoder : Decoder RandomIntRecord
+randomIntDecoder =
+    JD.map2 RandomIntRecord
+        (JD.field "isSecure" JD.bool)
+        (JD.field "int" JD.int)
+
+
+decode : GenericMessage -> Result String Message
+decode { tag, args } =
+    case tag of
+        "generatebytes" ->
+            case JD.decodeValue JD.int args of
+                Ok int ->
+                    Ok (GenerateBytes int)
+
+                Err _ ->
+                    Err <|
+                        "DevRandom 'generatebytes' args not an integer: "
+                            ++ JE.encode 0 args
+
+        "randombytes" ->
+            case JD.decodeValue randomBytesDecoder args of
+                Ok record ->
+                    Ok (RandomBytes record)
+
+                Err _ ->
+                    Err <|
+                        "Malformed DevRandom 'randombytes' args: "
+                            ++ JE.encode 0 args
+
+        "generateint" ->
+            case JD.decodeValue JD.int args of
+                Ok int ->
+                    Ok (GenerateInt int)
+
+                Err _ ->
+                    Err <|
+                        "DevRandom 'generateint' args not an integer: "
+                            ++ JE.encode 0 args
+
+        "randomint" ->
+            case JD.decodeValue randomIntDecoder args of
+                Ok record ->
+                    Ok (RandomInt record)
+
+                Err _ ->
+                    Err <|
+                        "Malformed DevRandom 'randomint' args: "
+                            ++ JE.encode 0 args
+
+        "simulatebytes" ->
+            case JD.decodeValue JD.int args of
+                Ok int ->
+                    Ok (SimulateBytes int)
+
+                Err _ ->
+                    Err <|
+                        "DevRandom 'simulatebytes' args not an integer: "
+                            ++ JE.encode 0 args
+
+        "simulateint" ->
+            case JD.decodeValue JD.int args of
+                Ok int ->
+                    Ok (SimulateInt int)
+
+                Err _ ->
+                    Err <|
+                        "DevRandom 'simulateint' args not an integer: "
+                            ++ JE.encode 0 args
+
+        _ ->
+            Err <| "Unknown DevRandom tag: " ++ tag
+
+
+{-| Send a `Message` through a `Cmd` port.
+-}
+send : (Value -> Cmd msg) -> Message -> Cmd msg
+send =
+    PortFunnel.sendMessage moduleDesc
+
+
+process : Message -> State -> ( State, Response )
+process message state =
+    case message of
+        RandomBytes record ->
+            ( state, RandomBytesResponse record )
+
+        RandomInt record ->
+            ( state, RandomIntResponse record )
+
+        SimulateBytes bytes ->
+            let
+                (State seed) =
+                    state
+
+                ( list, seed2 ) =
+                    Random.step (generator bytes) seed
+            in
+            ( State seed2
+            , RandomBytesResponse
+                { isSecure = False
+                , bytes = list
+                }
+            )
+
+        SimulateInt ceiling ->
+            let
+                (State seed) =
+                    state
+
+                ( int, seed2 ) =
+                    Random.step (intGenerator ceiling) seed
+            in
+            ( State seed2
+            , RandomIntResponse
+                { isSecure = False
+                , int = int
+                }
+            )
+
+        _ ->
+            ( state, NoResponse )
+
+
+{-| Responsible for sending a `CmdResponse` back through the port.
+
+This funnel doesn't initiate any sends, so this function always returns `Cmd.none`.
+
+-}
+commander : (GenericMessage -> Cmd msg) -> Response -> Cmd msg
+commander _ _ =
+    Cmd.none
+
+
+simulator : Message -> Maybe Message
+simulator message =
+    case message of
+        GenerateBytes bytes ->
+            Just (SimulateBytes bytes)
+
+        GenerateInt ceiling ->
+            Just (SimulateInt ceiling)
+
+        _ ->
+            Nothing
 
 
 generator : Int -> Random.Generator (List Int)
@@ -101,53 +338,69 @@ generator bytes =
     Random.list bytes <| Random.int 0 255
 
 
-{-| Message wrapper for receiveInt port of dev-random-port.js
-
-    (isSecure, integer) -> msg
-
-If isSecure is True, then the random number generation was cryptographically secure.
-
--}
-type alias ReceiveIntMsgWrapper msg =
-    ( Bool, Int ) -> msg
-
-
-{-| Parameter to `generateInt` that determines whether to use the Elm `Random` module or ports to the JavaScript code that calls `window.crypto.getRandomValues()`.
-
-If `sendPort` is not `Nothing`, will use the ports.
-
-If `sendPort` is `Nothing`, and `receiveIntMsgWrapper` is not `Nothing`, will use the Elm `Random` module.
-
--}
-type alias IntConfig msg =
-    { sendPort : Maybe (SendPort msg)
-    , receiveIntMsgWrapper : Maybe (ReceiveIntMsgWrapper msg)
-    }
-
-
-{-| Generate a random x uniformly distributed in the range 0 <= x < ceiling.
-
-    generateInt ceiling config
-
-If `config.sendPort` is not `Nothing`, return a `Cmd` that sends `bytes` through the port. Otherwise, if `config.receiveIntMsgWrapper` is not `Nothing`, use it to wrap the result of `Random.generate()` as a message for your `update` function.
-
--}
-generateInt : Int -> IntConfig msg -> Cmd msg
-generateInt ceiling config =
-    case config.sendPort of
-        Just thePort ->
-            thePort ceiling
-
-        Nothing ->
-            case config.receiveIntMsgWrapper of
-                Nothing ->
-                    Cmd.none
-
-                Just wrapper ->
-                    intGenerator ceiling
-                        |> Random.generate (\x -> wrapper ( False, x ))
-
-
 intGenerator : Int -> Random.Generator Int
 intGenerator ceiling =
     Random.int 0 (ceiling - 1)
+
+
+{-| Make a simulated `Cmd` port.
+-}
+makeSimulatedCmdPort : (Value -> msg) -> Value -> Cmd msg
+makeSimulatedCmdPort =
+    PortFunnel.makeSimulatedFunnelCmdPort
+        moduleDesc
+        simulator
+
+
+{-| Convert a `Message` to a nice-looking human-readable string.
+-}
+toString : Message -> String
+toString message =
+    case message of
+        GenerateBytes bytes ->
+            "GenerateBytes " ++ String.fromInt bytes
+
+        GenerateInt ceiling ->
+            "GenerateInt " ++ String.fromInt ceiling
+
+        RandomBytes { isSecure, bytes } ->
+            "RandomBytes { isSecure : "
+                ++ (if isSecure then
+                        "True"
+
+                    else
+                        "False"
+                   )
+                ++ ", bytes : ["
+                ++ (List.map String.fromInt bytes |> String.join ", ")
+                ++ "]"
+
+        RandomInt { isSecure, int } ->
+            "RandomInt { isSecure : "
+                ++ (if isSecure then
+                        "True"
+
+                    else
+                        "False"
+                   )
+                ++ ", int : "
+                ++ String.fromInt int
+
+        SimulateBytes bytes ->
+            "SimulateBytes " ++ String.fromInt bytes
+
+        SimulateInt ceiling ->
+            "SimulateInt " ++ String.fromInt ceiling
+
+
+{-| Convert a `Message` to the same JSON string that gets sent
+
+over the wire to the JS code.
+
+-}
+toJsonString : Message -> String
+toJsonString message =
+    message
+        |> encode
+        |> PortFunnel.encodeGenericMessage
+        |> JE.encode 0
