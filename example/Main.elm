@@ -1,8 +1,8 @@
 ---------------------------------------------------------------------
 --
--- Diceware.elm
--- Shared user interface for Diceware example of using DevRandom module.
--- Copyright (c) 2017 Bill St. Clair <billstclair@gmail.com>
+-- Main.elm
+-- User interface for Diceware example of using DevRandom module.
+-- Copyright (c) 2017-2018 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
 -- See LICENSE.txt
@@ -10,7 +10,7 @@
 ----------------------------------------------------------------------
 
 
-module Diceware exposing
+port module Main exposing
     ( Model
     , Msg(..)
     , init
@@ -19,10 +19,13 @@ module Diceware exposing
     )
 
 import Array exposing (Array)
+import Browser
 import Char
+import Cmd.Extra exposing (addCmd, addCmds, withCmd, withCmds, withNoCmd)
 import Debug exposing (log)
-import DevRandom exposing (IntConfig, SendPort)
+import DevRandom
 import DicewareStrings
+import Dict exposing (Dict)
 import Html
     exposing
         ( Attribute
@@ -59,10 +62,45 @@ import Html.Attributes
         , value
         )
 import Html.Events exposing (keyCode, on, onClick, onInput)
-import Json.Decode as Json
+import Json.Decode as JD
+import Json.Encode as JE exposing (Value)
 import List.Extra as LE
 import NewDicewareStrings
+import PortFunnel exposing (FunnelSpec, GenericMessage, ModuleDesc, StateAccessors)
 import ShortDicewareStrings
+import Time
+
+
+port cmdPort : Value -> Cmd msg
+
+
+port subPort : (Value -> msg) -> Sub msg
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+        [ subPort Process
+        , if model.startup then
+            Time.every 250 Init
+
+          else
+            Sub.none
+        ]
+
+
+simulatedCmdPort : Value -> Cmd Msg
+simulatedCmdPort =
+    DevRandom.makeSimulatedCmdPort Process
+
+
+getCmdPort : Model -> (Value -> Cmd Msg)
+getCmdPort model =
+    if model.useSimulator then
+        simulatedCmdPort
+
+    else
+        cmdPort
 
 
 type DicewareTable
@@ -97,8 +135,14 @@ type RandomReason
     | RandomNumber
 
 
+type alias FunnelState =
+    { random : DevRandom.State }
+
+
 type alias Model =
-    { config : IntConfig Msg
+    { startup : Bool
+    , funnelState : FunnelState
+    , useSimulator : Bool
     , randomReason : RandomReason
     , countString : String
     , count : Int
@@ -111,31 +155,18 @@ type alias Model =
     , randomMaxString : String
     , randomMax : Int
     , randomNumber : Int
+    , error : Maybe String
     }
 
 
-makeConfig : Maybe (SendPort Msg) -> IntConfig Msg
-makeConfig sendPort =
-    case sendPort of
-        Nothing ->
-            { sendPort = Nothing
-            , receiveIntMsgWrapper = Just ReceiveInt
-            }
-
-        _ ->
-            { sendPort = sendPort
-            , receiveIntMsgWrapper = Nothing
-            }
-
-
-makeInitialModel : Int -> Maybe (SendPort Msg) -> Model
-makeInitialModel count sendPort =
+makeInitialModel : Int -> Model
+makeInitialModel count =
     let
-        config =
-            makeConfig sendPort
-
         model =
-            { config = config
+            { startup = True
+            , funnelState =
+                { random = DevRandom.initialState 0 }
+            , useSimulator = True
             , randomReason = RandomPassphrase
             , countString = String.fromInt count
             , count = count
@@ -148,23 +179,49 @@ makeInitialModel count sendPort =
             , randomMaxString = "100"
             , randomMax = 0
             , randomNumber = 10
+            , error = Nothing
             }
     in
     model
 
 
-init : Maybe (SendPort Msg) -> ( Model, Cmd Msg )
-init sendPort =
+main =
+    Browser.element
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        }
+
+
+init : () -> ( Model, Cmd Msg )
+init _ =
     let
         count =
             6
 
         model =
-            makeInitialModel count sendPort
+            makeInitialModel count
     in
-    ( { model | randomReason = RandomPassphrase }
-    , DevRandom.generateInt (getCount model) model.config
-    )
+    model |> withNoCmd
+
+
+generatePassphrase : Model -> ( Model, Cmd Msg )
+generatePassphrase model =
+    { model | randomReason = RandomPassphrase }
+        |> withCmd
+            (DevRandom.GenerateInt (getCount model)
+                |> DevRandom.send (getCmdPort model)
+            )
+
+
+generateNumber : Model -> ( Model, Cmd Msg )
+generateNumber model =
+    { model | randomReason = RandomNumber }
+        |> withCmd
+            (DevRandom.GenerateInt model.randomMax
+                |> DevRandom.send (getCmdPort model)
+            )
 
 
 getDiceCount : Model -> Int
@@ -224,13 +281,89 @@ getEntropy model =
     (toFloat <| List.length model.strings) * entropyPerDie model.whichTable
 
 
+randomAccessors : StateAccessors FunnelState DevRandom.State
+randomAccessors =
+    StateAccessors .random (\substate state -> { state | random = substate })
+
+
+type alias AppFunnel substate message response =
+    FunnelSpec FunnelState substate message response Model Msg
+
+
+type Funnel
+    = RandomFunnel (AppFunnel DevRandom.State DevRandom.Message DevRandom.Response)
+
+
+emptyCommander : (GenericMessage -> Cmd msg) -> response -> Cmd msg
+emptyCommander _ _ =
+    Cmd.none
+
+
+funnels : Dict String Funnel
+funnels =
+    Dict.fromList
+        [ ( DevRandom.moduleName
+          , RandomFunnel <|
+                FunnelSpec randomAccessors
+                    DevRandom.moduleDesc
+                    emptyCommander
+                    randomHandler
+          )
+        ]
+
+
+randomHandler : DevRandom.Response -> FunnelState -> Model -> ( Model, Cmd Msg )
+randomHandler response state mdl =
+    let
+        model =
+            { mdl | funnelState = state }
+    in
+    case response of
+        DevRandom.RandomIntResponse { isSecure, int } ->
+            case model.randomReason of
+                RandomNumber ->
+                    { model
+                        | isSecure = isSecure
+                        , randomNumber = int + 1
+                    }
+                        |> withNoCmd
+
+                RandomPassphrase ->
+                    let
+                        string =
+                            case Array.get int <| getArray model of
+                                Nothing ->
+                                    "a"
+
+                                Just s ->
+                                    s
+
+                        strings =
+                            string :: model.strings
+                    in
+                    { model
+                        | strings = strings
+                        , isSecure = isSecure
+                    }
+                        |> (if List.length strings >= model.count then
+                                withCmd Cmd.none
+
+                            else
+                                generatePassphrase
+                           )
+
+        _ ->
+            model |> withNoCmd
+
+
 type Msg
-    = UpdateCount String
+    = Init Time.Posix
+    | UpdateCount String
     | UpdateDice String
     | DiceKeydown Int
     | Generate
     | Clear
-    | ReceiveInt ( Bool, Int )
+    | Process Value
     | LookupDice
     | ChangeTable String
     | ToggleModifications
@@ -256,12 +389,24 @@ stringToInt string =
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
-update msg model =
+update msg modl =
     let
+        model =
+            { modl | error = Nothing }
+
         modifications =
             model.modifications
     in
     case msg of
+        Init _ ->
+            { model | startup = False }
+                |> (if model.useSimulator then
+                        generatePassphrase
+
+                    else
+                        withNoCmd
+                   )
+
         UpdateCount countString ->
             ( { model
                 | countString = countString
@@ -300,12 +445,8 @@ update msg model =
                     )
 
                 _ ->
-                    ( { model
-                        | strings = []
-                        , randomReason = RandomPassphrase
-                      }
-                    , DevRandom.generateInt (getCount model) model.config
-                    )
+                    { model | strings = [] }
+                        |> generatePassphrase
 
         Clear ->
             ( { model
@@ -315,40 +456,43 @@ update msg model =
             , Cmd.none
             )
 
-        ReceiveInt ( isSecure, idx ) ->
-            case model.randomReason of
-                RandomNumber ->
-                    ( { model
-                        | randomNumber = idx + 1
-                        , isSecure = isSecure
-                      }
-                    , Cmd.none
-                    )
+        Process value ->
+            case PortFunnel.decodeGenericMessage value of
+                Err error ->
+                    { model | error = Just error } |> withNoCmd
 
-                RandomPassphrase ->
+                Ok genericMessage ->
                     let
-                        string =
-                            case Array.get idx <| getArray model of
-                                Nothing ->
-                                    "a"
-
-                                Just s ->
-                                    s
-
-                        strings =
-                            string :: model.strings
+                        moduleName =
+                            genericMessage.moduleName
                     in
-                    ( { model
-                        | strings = strings
-                        , isSecure = isSecure
-                        , randomReason = RandomPassphrase
-                      }
-                    , if List.length strings >= model.count then
-                        Cmd.none
+                    case Dict.get moduleName funnels of
+                        Just funnel ->
+                            case funnel of
+                                RandomFunnel appFunnel ->
+                                    let
+                                        ( mdl, cmd ) =
+                                            process genericMessage appFunnel model
+                                    in
+                                    if mdl.useSimulator && DevRandom.isLoaded mdl.funnelState.random then
+                                        { mdl
+                                            | useSimulator = False
+                                            , strings = []
+                                        }
+                                            |> generatePassphrase
 
-                      else
-                        DevRandom.generateInt (getCount model) model.config
-                    )
+                                    else
+                                        mdl |> withCmd cmd
+
+                        _ ->
+                            { model
+                                | error =
+                                    Just
+                                        ("Unknown moduleName: "
+                                            ++ moduleName
+                                        )
+                            }
+                                |> withNoCmd
 
         LookupDice ->
             ( lookupDice model
@@ -365,17 +509,18 @@ update msg model =
 
                 count =
                     newRollCount newTable model
+
+                mdl =
+                    { model
+                        | whichTable = stringToTable table
+                        , count = count
+                        , countString = String.fromInt count
+                        , strings = []
+                        , diceString = ""
+                        , randomReason = RandomPassphrase
+                    }
             in
-            ( { model
-                | whichTable = stringToTable table
-                , count = count
-                , countString = String.fromInt count
-                , strings = []
-                , diceString = ""
-                , randomReason = RandomPassphrase
-              }
-            , DevRandom.generateInt count model.config
-            )
+            generatePassphrase mdl
 
         ToggleModifications ->
             ( { model | enableModifications = not model.enableModifications }
@@ -434,12 +579,11 @@ update msg model =
                 update GenerateRandomNumber model
 
             else
-                ( model, Cmd.none )
+                model |> withNoCmd
 
         UpdateRandomMaxString string ->
-            ( { model | randomMaxString = string }
-            , Cmd.none
-            )
+            { model | randomMaxString = string }
+                |> withNoCmd
 
         GenerateRandomNumber ->
             let
@@ -448,32 +592,45 @@ update msg model =
             in
             case String.toInt model.randomMaxString of
                 Nothing ->
-                    ( mdl, Cmd.none )
+                    mdl |> withNoCmd
 
                 Just max ->
                     if max <= 0 then
-                        ( mdl, Cmd.none )
+                        mdl |> withNoCmd
 
                     else
-                        ( { mdl
-                            | randomReason = RandomNumber
-                            , randomMax = max
+                        { mdl
+                            | randomMax = max
                             , randomNumber = 0
-                          }
-                        , DevRandom.generateInt max model.config
-                        )
+                        }
+                            |> generateNumber
+
+
+process : GenericMessage -> AppFunnel substate message response -> Model -> ( Model, Cmd Msg )
+process genericMessage funnel model =
+    case
+        PortFunnel.appProcess (getCmdPort model)
+            genericMessage
+            funnel
+            model.funnelState
+            model
+    of
+        Err error ->
+            { model | error = Just error } |> withNoCmd
+
+        Ok ( model2, cmd ) ->
+            model2 |> withCmd cmd
 
 
 updateModificationsInt : String -> (Int -> Modifications) -> Model -> ( Model, Cmd Msg )
 updateModificationsInt string setter model =
     case stringToInt string of
         Err _ ->
-            ( model, Cmd.none )
+            model |> withNoCmd
 
         Ok int ->
-            ( { model | modifications = setter int }
-            , Cmd.none
-            )
+            { model | modifications = setter int }
+                |> withNoCmd
 
 
 newRollCount : DicewareTable -> Model -> Int
@@ -595,7 +752,7 @@ br =
 
 onKeyDown : (Int -> msg) -> Attribute msg
 onKeyDown tagger =
-    on "keydown" (Json.map tagger keyCode)
+    on "keydown" (JD.map tagger keyCode)
 
 
 checkbox : Bool -> msg -> String -> Html msg
@@ -611,7 +768,7 @@ checkbox isChecked msg name =
         ]
 
 
-{-| [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[https://docs.oracle.com/cd/E11223\_01/doc.910/e11197/app\_special\_char.htm#MCMAD416](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)
+{-| [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[https://docs.oracle.com/cd/E11223\_01/doc.910/e11197/app\_special\_char.htm#MCMAD416](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)](https://docs.oracle.com/cd/E11223_01/doc.910/e11197/app_special_char.htm#MCMAD416)
 -}
 specialChars : String
 specialChars =
@@ -739,7 +896,7 @@ trimStrings trim strings =
                 else
                     let
                         ( ss2, changed ) =
-                            Debug.log "trim1" <| trim1 ss
+                            trim1 ss
                     in
                     if changed then
                         loop (len - 1) ss2
@@ -840,7 +997,14 @@ view model =
         ]
         [ h2 [] [ text "Diceware Passphrase Generator" ]
         , p []
-            [ text "This page generates passphrases using JavaScript running in your web browser, using the browser's cryptographically secure random number generator. See below for instructions." ]
+            [ text "This page generates passphrases using JavaScript running in your web browser, using the browser's cryptographically secure random number generator. See below for instructions."
+            , case model.error of
+                Just s ->
+                    span [ style "color" "red" ] [ br, text s ]
+
+                Nothing ->
+                    text ""
+            ]
         , p []
             [ select [ onInput ChangeTable ]
                 [ option
@@ -969,12 +1133,11 @@ view model =
         , p []
             [ text "If the passphrase is black, then cryptographically-secure random number generation was used. If it is red, then the random number generation was NOT cryptographically secure, because "
             , text <|
-                case model.config.sendPort of
-                    Nothing ->
-                        "you are running the pure Elm version of the code."
+                if model.useSimulator then
+                    "you are running the pure Elm version of the code."
 
-                    _ ->
-                        "your browser does not support it."
+                else
+                    "your browser does not support it."
             ]
         , p []
             [ text "If you prefer rolling your own dice to using your computer's random number generator, you can type into the box to the left of the \"Lookup\" button four or five numbers (from 1-6) from four or five six-sided dice rolls, then click that button (four dice rolls for the \"EFF Short List\" or five for the other two). It will add one word to the end of the list."

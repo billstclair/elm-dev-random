@@ -1,5 +1,5 @@
 #!/bin/bash
 
-elm make ports.elm --output site/js/Main.js
+elm make Main.elm --output site/elm.js
 
 

@@ -1,31 +1,29 @@
-This directory contains two implementations of a simple Diceware passphrase generator, using the `DevRandom` module to generate random numbers for the dice rolls.
+This directory contains a simple Diceware passphrase generator, using the `DevRandom` module to generate random numbers for the dice rolls.
 
 ## Files
 
-* `noports.elm` is a pure Elm version, that uses the (_not_ cryptographically secure) Elm `Random` module.
-* `ports.elm` is a version that uses two ports to the JavaScript code in the [`site`](site/) directory to call `window.crypto.getRandomBytes()`, which _is_ cryptographically secure. It must be compiled into JavaScript for use by `site/index.html`.
-* `Diceware.elm` is a shared user interface module used by both `noports.elm` and `ports.elm`.
+* `Main.elm` is the top-level user interface module.
 * `DicewareStrings.elm` contains the 7,776 (6^5) Diceware strings, one for each roll of five six-sided dice.
 * `NewDiceWareStrings.elm` contains the EFF's new 7,776 Diceware strings.
 * `ShortDicewareStrings.elm` contains the EFF's new 1,296 (6^4) Diceware strings.
 * `eff_large_wordlist.txt` contains just the words for the Electronic Freedom Foundation's long [new word lists](https://www.eff.org/deeplinks/2016/07/new-wordlists-random-passphrases). This file is here just to archive it. The code uses `NewDicewareStrings.elm`.
 * `eff_short_wordlist_1.txt` contains just the words for the Electronic Freedom Foundation's first short word list. Again, just here as an archive.
 
-## Running the examples
+## Running the example
 
-The easiest way to run `noports.elm` is via Elm reactor:
+To run the example in `elm reactor`
 
     cd .../elm-dev-random/example
     elm reactor
 
-Then aim your web browser at [localhost:8000/noports.elm](http://localhost:8000/noports.elm).
+Then aim your web browser at [localhost:8000/Main.elm](http://localhost:8000/Main.elm).
 
-In order to run `ports.elm`, you need to compile it into JavaScript as `site/js/Main.js`:
+In order to run it with real ports, you need to compile it into JavaScript as `site/js/elm.js`:
 
     cd .../elm-dev-random/example
     bin/build
 
-Then aim your web browser at `site/index.html`.
+Then aim your web browser at `site/index.html` (or run `elm reactor`, and aim your browser at [localhost:8000/site/index.html](http://localhost:8000/site/index.html)).
 
 The `site` directory is live at [lisplog.org/diceware](https://lisplog.org/diceware/).
 
@@ -33,12 +31,12 @@ The `site` directory is live at [lisplog.org/diceware](https://lisplog.org/dicew
 
 ## Adding the ports to your own Elm program
 
-The JavaScript code communicates with your program via two ports, as defined in `ports.elm`:
+The JavaScript code communicates with your program via two ports, managed by [billstclair/elm-port-funnel](http://package.elm-lang.org/packages/billstclair/elm-portfunnel/latest). These are defined in `Main.elm`:
 
-    port getDevRandom : Int -> Cmd msg
-    port receiveRandomBytes : (Bool, (List Int -> msg)) -> Sub msg
+    port cmdPort : Value -> Cmd msg
+    port subPort : (Value -> msg) -> Sub msg
 
-You can name these anything you want, but the signatures must match. If you use different names, you must change the `site/index.html` code to use your names.
+If you change these names, you'll have to change
 
 Your `index.html` file must include the `site/js/dev-random-port.js` file, e.g via a line in its `<head>` section:
 

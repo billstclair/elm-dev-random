@@ -12,42 +12,34 @@
 <html>
   <head>
     <title>Diceware Passphrase Generator</title>
-    <script type='text/javascript' src='js/dev-random-port.js'></script>
-    <!-- Change Main.js to the file name into which you compile your Elm code. -->
-    <script type='text/javascript' src='js/Main.js'></script>
+    <!-- Change elm.js to the file name into which you compile your Elm code. -->
+    <script type='text/javascript' src='elm.js'></script>
+    <script type='text/javascript' src='js/PortFunnel.js'></script>
   </head>
   <body>
     <div id='elm'></div>
     <script type="text/javascript">
 
-//
-// This script assumes that your main Elm file declares itself as:
-//
-//    port module Main
-//
-// It also assumes that the port used to send information here is named
-// getDevRandomInt and the port used to respond is named receiveRandomInt.
-// The former takes an integer arg, the number of random bytes to generate.
-// The latter takes a List of integers, the random bytes.
-//
-// port getDevRandomInt : Int -> Cmd msg
-// port receiveRandomInt : ((Bool, Int) -> msg) -> Sub msg
-//
-// If you need to name your main module something other than Main
-// or to name your ports something other than getDevRandom & receiveRandomInt,
-// you'll have to edit those appropriately.
-//
+// Initialize the name of your main module here
+// Change "Main" to your application's module name.
+var mainModule = 'Main';
 
-// Start the Elm app.
-// devRandomPort is defined by js/dev-random-port.js
-var app = Elm.Main.init({
+var app = Elm[mainModule].init({
   node: document.getElementById('elm'),
-  flags : null
 });
 
-// Connect to the ports
-// devRandomPort is defined in js/dev-random-port.js
-devRandomPort.initInt(app.ports.getDevRandomInt, app.ports.receiveRandomInt);
+// These are the defaults, so you don't need to pass them.
+// If you need to use something different, they can be passed
+// as the 'portNames' and 'moduleDirectory' properties of
+// the second parameter to PortFunnel.subscribe() below.
+//var portNames = ['cmdPort', 'subPort'];
+//var moduleDirectory = 'js/PortFunnel';
+
+// PortFunnel.subscribe will load js/PortFunnel/<module>.js,
+// for each module in this list.
+var modules = ['DevRandom'];
+
+PortFunnel.subscribe(app, {modules: modules});
 
     </script>
   </body>

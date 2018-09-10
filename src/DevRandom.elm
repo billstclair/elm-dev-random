@@ -17,6 +17,7 @@ module DevRandom exposing
     , send
     , toString, toJsonString
     , makeSimulatedCmdPort
+    , isLoaded
     )
 
 {-| The `DevRandom` module provides a `billstclair/elm-port-funnel` funnel to generate cryptographically-secure random numbers. It does this with JavaScript code that calls `window.crypto.getRandomValues()`.
@@ -55,6 +56,11 @@ See the [example readme](https://github.com/billstclair/elm-dev-random/tree/mast
 
 @docs makeSimulatedCmdPort
 
+
+# Non-standard Functions
+
+@docs isLoaded
+
 -}
 
 import Json.Decode as JD exposing (Decoder)
@@ -70,7 +76,10 @@ the simulator will always use the same random seed.
 
 -}
 type State
-    = State Random.Seed
+    = State
+        { seed : Random.Seed
+        , isLoaded : Bool
+        }
 
 
 {-| A `MessageResponse` encapsulates a message.
@@ -122,6 +131,7 @@ type Message
     | RandomInt RandomIntRecord
     | SimulateBytes Int
     | SimulateInt Int
+    | Startup
 
 
 {-| The initial state. Encapsulates a `Random.Seed`.
@@ -132,7 +142,10 @@ so if you're using the JS code for real random numbers, passing 0 here is fine.
 -}
 initialState : Int -> State
 initialState int =
-    State <| Random.initialSeed int
+    State
+        { seed = Random.initialSeed int
+        , isLoaded = False
+        }
 
 
 {-| The name of this funnel: "DevRandom".
@@ -177,6 +190,9 @@ encode message =
 
         SimulateInt ceiling ->
             GenericMessage moduleName "simulateint" <| JE.int ceiling
+
+        Startup ->
+            GenericMessage moduleName "startup" JE.null
 
 
 randomBytesDecoder : Decoder RandomBytesRecord
@@ -256,6 +272,9 @@ decode { tag, args } =
                         "DevRandom 'simulateint' args not an integer: "
                             ++ JE.encode 0 args
 
+        "startup" ->
+            Ok Startup
+
         _ ->
             Err <| "Unknown DevRandom tag: " ++ tag
 
@@ -268,23 +287,25 @@ send =
 
 
 process : Message -> State -> ( State, Response )
-process message state =
+process message (State state) =
     case message of
+        Startup ->
+            ( State { state | isLoaded = True }
+            , NoResponse
+            )
+
         RandomBytes record ->
-            ( state, RandomBytesResponse record )
+            ( State state, RandomBytesResponse record )
 
         RandomInt record ->
-            ( state, RandomIntResponse record )
+            ( State state, RandomIntResponse record )
 
         SimulateBytes bytes ->
             let
-                (State seed) =
-                    state
-
                 ( list, seed2 ) =
-                    Random.step (generator bytes) seed
+                    Random.step (generator bytes) state.seed
             in
-            ( State seed2
+            ( State { state | seed = seed2 }
             , RandomBytesResponse
                 { isSecure = False
                 , bytes = list
@@ -293,13 +314,10 @@ process message state =
 
         SimulateInt ceiling ->
             let
-                (State seed) =
-                    state
-
                 ( int, seed2 ) =
-                    Random.step (intGenerator ceiling) seed
+                    Random.step (intGenerator ceiling) state.seed
             in
-            ( State seed2
+            ( State { state | seed = seed2 }
             , RandomIntResponse
                 { isSecure = False
                 , int = int
@@ -307,7 +325,7 @@ process message state =
             )
 
         _ ->
-            ( state, NoResponse )
+            ( State state, NoResponse )
 
 
 {-| Responsible for sending a `CmdResponse` back through the port.
@@ -392,6 +410,9 @@ toString message =
         SimulateInt ceiling ->
             "SimulateInt " ++ String.fromInt ceiling
 
+        Startup ->
+            "<Startup>"
+
 
 {-| Convert a `Message` to the same JSON string that gets sent
 
@@ -404,3 +425,13 @@ toJsonString message =
         |> encode
         |> PortFunnel.encodeGenericMessage
         |> JE.encode 0
+
+
+{-| Returns true if a `Startup` message has been processed.
+
+This is sent by the port code after it has initialized.
+
+-}
+isLoaded : State -> Bool
+isLoaded (State state) =
+    state.isLoaded
