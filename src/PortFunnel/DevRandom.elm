@@ -1,8 +1,8 @@
 ---------------------------------------------------------------------
 --
--- ElmRandom.elm
+-- DevRandom.elm
 -- Cryptographically secure random number generator.
--- Copyright (c) 2017 Bill St. Clair <billstclair@gmail.com>
+-- Copyright (c) 2017-2018 Bill St. Clair <billstclair@gmail.com>
 -- Some rights reserved.
 -- Distributed under the MIT License
 -- See LICENSE.txt
@@ -10,7 +10,7 @@
 ----------------------------------------------------------------------
 
 
-module DevRandom exposing
+module PortFunnel.DevRandom exposing
     ( Message(..), Response(..), State
     , moduleName, moduleDesc, commander
     , initialState
@@ -20,7 +20,7 @@ module DevRandom exposing
     , isLoaded
     )
 
-{-| The `DevRandom` module provides a `billstclair/elm-port-funnel` funnel to generate cryptographically-secure random numbers. It does this with JavaScript code that calls `window.crypto.getRandomValues()`.
+{-| The `PortFunnel.DevRandom` module provides a `billstclair/elm-port-funnel` funnel to generate cryptographically-secure random numbers. It does this with JavaScript code that calls `window.crypto.getRandomValues()`.
 
 There is a simulator that uses the standard Elm `Random` module, which is NOT cryptographically secure. See [example/Diceware.elm](https://github.com/billstclair/elm-dev-random/blob/master/example/Diceware.elm) for how to use it.
 
