@@ -1,6 +1,6 @@
 The [billstclair/elm-dev-random](http://package.elm-lang.org/packages/billstclair/elm-dev-random/latest) package provides cryptographically secure random number generation via JavaScript's `window.crypto.getRandomValues()` function.
 
-As of version 2.0.0, the `DevRandom` module uses [billstclair/elm-port-funnel](http://package.elm-lang.org/packages/billstclair/elm-port-funnel/latest) to share a pair of ports with other port modules. This implies a fairly major change to clients.
+As of version 2.0.0, the `PortFunnel.DevRandom` module uses [billstclair/elm-port-funnel](http://package.elm-lang.org/packages/billstclair/elm-port-funnel/latest) to share a pair of ports with other port modules. This implies a fairly major change to clients.
 
 If you want to continue to use the earlier `DevRandom` port setup, use version 1.1.6 for Elm 0.19 or 1.1.5 for Elm 0.18.
 
