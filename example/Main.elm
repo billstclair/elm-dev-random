@@ -312,11 +312,25 @@ funnels =
         ]
 
 
+doIsLoaded : Model -> ( Model, Cmd Msg )
+doIsLoaded model =
+    if model.useSimulator && DevRandom.isLoaded model.funnelState.random then
+        { model
+            | useSimulator = False
+            , strings = []
+        }
+            |> generatePassphrase
+
+    else
+        model |> withNoCmd
+
+
 randomHandler : DevRandom.Response -> FunnelState -> Model -> ( Model, Cmd Msg )
 randomHandler response state mdl =
     let
-        model =
-            { mdl | funnelState = state }
+        ( model, cmd ) =
+            doIsLoaded
+                { mdl | funnelState = state }
     in
     case response of
         DevRandom.RandomIntResponse { isSecure, int } ->
@@ -326,7 +340,7 @@ randomHandler response state mdl =
                         | isSecure = isSecure
                         , randomNumber = int + 1
                     }
-                        |> withNoCmd
+                        |> withCmd cmd
 
                 RandomPassphrase ->
                     let
@@ -346,14 +360,14 @@ randomHandler response state mdl =
                         , isSecure = isSecure
                     }
                         |> (if List.length strings >= model.count then
-                                withCmd Cmd.none
+                                withCmd cmd
 
                             else
                                 generatePassphrase
                            )
 
         _ ->
-            model |> withNoCmd
+            model |> withCmd cmd
 
 
 type Msg
@@ -457,42 +471,18 @@ update msg modl =
             )
 
         Process value ->
-            case PortFunnel.decodeGenericMessage value of
+            case
+                PortFunnel.processValue funnels
+                    appTrampoline
+                    value
+                    model.funnelState
+                    model
+            of
                 Err error ->
                     { model | error = Just error } |> withNoCmd
 
-                Ok genericMessage ->
-                    let
-                        moduleName =
-                            genericMessage.moduleName
-                    in
-                    case Dict.get moduleName funnels of
-                        Just funnel ->
-                            case funnel of
-                                RandomFunnel appFunnel ->
-                                    let
-                                        ( mdl, cmd ) =
-                                            process genericMessage appFunnel model
-                                    in
-                                    if mdl.useSimulator && DevRandom.isLoaded mdl.funnelState.random then
-                                        { mdl
-                                            | useSimulator = False
-                                            , strings = []
-                                        }
-                                            |> generatePassphrase
-
-                                    else
-                                        mdl |> withCmd cmd
-
-                        _ ->
-                            { model
-                                | error =
-                                    Just
-                                        ("Unknown moduleName: "
-                                            ++ moduleName
-                                        )
-                            }
-                                |> withNoCmd
+                Ok res ->
+                    res
 
         LookupDice ->
             ( lookupDice model
@@ -606,20 +596,19 @@ update msg modl =
                             |> generateNumber
 
 
-process : GenericMessage -> AppFunnel substate message response -> Model -> ( Model, Cmd Msg )
-process genericMessage funnel model =
-    case
-        PortFunnel.appProcess (getCmdPort model)
-            genericMessage
-            funnel
-            model.funnelState
-            model
-    of
-        Err error ->
-            { model | error = Just error } |> withNoCmd
-
-        Ok ( model2, cmd ) ->
-            model2 |> withCmd cmd
+appTrampoline : GenericMessage -> Funnel -> FunnelState -> Model -> Result String ( Model, Cmd Msg )
+appTrampoline genericMessage funnel state model =
+    let
+        theCmdPort =
+            getCmdPort model
+    in
+    case funnel of
+        RandomFunnel randomFunnel ->
+            PortFunnel.appProcess theCmdPort
+                genericMessage
+                randomFunnel
+                state
+                model
 
 
 updateModificationsInt : String -> (Int -> Modifications) -> Model -> ( Model, Cmd Msg )
