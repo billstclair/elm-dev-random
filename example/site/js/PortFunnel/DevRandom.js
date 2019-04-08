@@ -2,28 +2,39 @@
 //
 // DevRandom.js
 // A PortFunnel for DevRandomPort.elm
-// Copyright (c) 2017-2018 Bill St. Clair <billstclair@gmail.com>
+// Copyright (c) 2017-2019 Bill St. Clair <billstclair@gmail.com>
 // Some rights reserved.
 // Distributed under the MIT License
 // See LICENSE.txt
 //
 //////////////////////////////////////////////////////////////////////
 
-(function() {
+(function(scope) {
 
   var moduleName = 'DevRandom';
-  var sub = PortFunnel.sub;
+  var sub;
+
+  function init() {
+    var PortFunnel = scope.PortFunnel;
+    if (!PortFunnel || !PortFunnel.sub || !PortFunnel.modules) {
+      // Loop until PortFunnel.js has initialized itself.
+      setTimeout(init, 10);
+      return;
+    }
+    
+    sub = PortFunnel.sub;
+    PortFunnel.modules[moduleName] = { cmd: dispatcher };
+
+    // Let the Elm code know we've started
+    sub.send({ module: moduleName,
+               tag: "startup",
+               args : null
+             });
+  }
+  init();
 
   var crypto = getCrypto();
   var secure = crypto ? true : false;
-
-  PortFunnel.modules[moduleName].cmd = dispatcher;
-
-  // Let the Elm code know we've started.
-  sub.send({ module: moduleName,
-             tag: "startup",
-             args: null
-           });
 
   function dispatcher(tag, args) {
     if (tag == 'generatebytes') {
@@ -109,4 +120,4 @@
   }
 
 
-})();    // Execute the enclosing function
+})(this);    // Execute the enclosing function

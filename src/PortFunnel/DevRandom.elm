@@ -11,7 +11,7 @@
 
 
 module PortFunnel.DevRandom exposing
-    ( Message(..), Response(..), State
+    ( Message(..), Response(..), State, JSVersion
     , moduleName, moduleDesc, commander
     , initialState
     , send
@@ -29,7 +29,7 @@ See the [example readme](https://github.com/billstclair/elm-dev-random/tree/mast
 
 # Types
 
-@docs Message, Response, State
+@docs Message, Response, State, JSVersion
 
 
 # Components of a `PortFunnel.FunnelSpec`
@@ -435,3 +435,12 @@ This is sent by the port code after it has initialized.
 isLoaded : State -> Bool
 isLoaded (State state) =
     state.isLoaded
+
+
+{-| This is used to force a major version bump when the JS changes.
+
+You'll usually not use it for anything.
+
+-}
+type alias JSVersion =
+    { v4_1 : () }
