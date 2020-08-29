@@ -1029,8 +1029,10 @@ view model =
                     ++ " bits"
             ]
         , div []
-            [ p
-                [ style "margin-left" "1em"
+            [ input
+                [ size <| String.length string + 2
+                , value string
+                , style "margin-left" "1em"
                 , style "font-size" "150%"
                 , style "padding-left" "0.5em"
                 , style "color"
@@ -1041,7 +1043,7 @@ view model =
                         "red"
                     )
                 ]
-                [ text string ]
+                []
             ]
         , h3 []
             [ text "Roll Your Own Dice" ]
