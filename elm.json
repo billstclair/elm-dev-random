@@ -3,7 +3,7 @@
     "name": "billstclair/elm-dev-random",
     "summary": "Cryptographically secure random-number generator.",
     "license": "MIT",
-    "version": "3.1.1",
+    "version": "3.1.2",
     "exposed-modules": [
         "PortFunnel.DevRandom"
     ],
