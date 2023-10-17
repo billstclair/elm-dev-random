@@ -77,6 +77,9 @@ port cmdPort : Value -> Cmd msg
 port subPort : (Value -> msg) -> Sub msg
 
 
+port copyPort : Value -> Cmd msg
+
+
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
@@ -390,6 +393,7 @@ type Msg
     | RandomMaxDown Int
     | UpdateRandomMaxString String
     | GenerateRandomNumber
+    | CopyPassphrase
 
 
 stringToInt : String -> Result String Int
@@ -594,6 +598,16 @@ update msg modl =
                             , randomNumber = 0
                         }
                             |> generateNumber
+
+        CopyPassphrase ->
+            let
+                string =
+                    modifyStrings model
+
+                value =
+                    JE.string string
+            in
+            model |> withCmd (copyPort value)
 
 
 appTrampoline : GenericMessage -> Funnel -> FunnelState -> Model -> Result String ( Model, Cmd Msg )
@@ -1029,10 +1043,12 @@ view model =
                     ++ " bits"
             ]
         , div []
-            [ input
+            [ button [ onClick CopyPassphrase ]
+                [ text "Copy" ]
+            , text " "
+            , input
                 [ size <| String.length string + 2
                 , value string
-                , style "margin-left" "1em"
                 , style "font-size" "150%"
                 , style "padding-left" "0.5em"
                 , style "color"
@@ -1046,7 +1062,10 @@ view model =
                 []
             ]
         , h3 []
-            [ text "Roll Your Own Dice" ]
+            [ text "Roll Your Own "
+            , text <| String.fromInt (getDiceCount model)
+            , text " Dice"
+            ]
         , p []
             [ input
                 (let
@@ -1179,7 +1198,7 @@ view model =
             , a [ href "https://github.com/billstclair/elm-dev-random" ]
                 [ text "github.com/billstclair/elm-dev-random" ]
             , br
-            , text "Copyright 2017-2018 Bill St. Clair"
+            , text "Copyright 2017-2023 Bill St. Clair"
             ]
         ]
 

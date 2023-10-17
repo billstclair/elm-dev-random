@@ -44,6 +44,13 @@ var app = Elm[mainModule].init({
 
 PortFunnel.subscribe(app);
 
+var copyPort = app.ports.copyPort;
+if (copyPort) {
+  copyPort.subscribe(function(text) {
+    navigator.clipboard.writeText(text);
+  })
+}
+
     </script>
   </body>
 </html>
