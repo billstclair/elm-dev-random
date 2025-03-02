@@ -998,7 +998,14 @@ view model =
         [ style "width" "40em"
         , style "margin-left" "2em"
         ]
-        [ h2 [] [ text "Diceware Passphrase Generator" ]
+        [ h2 []
+            [ img
+                [ src "images/icon-192.png"
+                , style "height" "1em"
+                ]
+                []
+            , text " Diceware Passphrase Generator"
+            ]
         , p []
             [ text "This page generates passphrases using JavaScript running in your web browser, using the browser's cryptographically secure random number generator. See below for instructions."
             , case model.error of
@@ -1198,7 +1205,7 @@ view model =
             , a [ href "https://github.com/billstclair/elm-dev-random" ]
                 [ text "github.com/billstclair/elm-dev-random" ]
             , br
-            , text "Copyright 2017-2023 Bill St. Clair"
+            , text "Copyright 2017-2025 Bill St. Clair"
             ]
         ]
 
