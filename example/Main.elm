@@ -995,8 +995,9 @@ view model =
             modifyStrings model
     in
     div
-        [ style "width" "40em"
-        , style "margin-left" "2em"
+        [ style "width" "100vw"
+        , style "max-width" "40em"
+        , style "margin-left" "0"
         ]
         [ h2 []
             [ img
